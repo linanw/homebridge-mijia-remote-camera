@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 — 2026-10-24
+
+- Publish explicit HomeKit `ConfiguredName` values for the four camera direction switches: 云台向上, 云台向下, 云台向左 and 云台向右.
+- Repair default service names in place while preserving existing custom configured names, service identifiers, pairing and automation targets.
+
 ## 0.4.1 — 2026-10-24
 
 - Accept the trusted Homebridge storage alias used by Synology Docker during GUI component import. User-selected descendants still reject symbolic links and directory escapes.

@@ -5,10 +5,17 @@ import { configurePtz } from '../lib/ptz.mjs';
 
 const require = createRequire(import.meta.url);
 const hostRequire = createRequire(require.resolve('homebridge'));
-let hap;
-try { hap = hostRequire('@homebridge/hap-nodejs'); } catch { hap = hostRequire('hap-nodejs'); }
+let hap, IdentifierCache;
+try {
+  hap = hostRequire('@homebridge/hap-nodejs');
+  ({ IdentifierCache } = hostRequire('@homebridge/hap-nodejs/dist/lib/model/IdentifierCache'));
+} catch {
+  hap = hostRequire('hap-nodejs');
+  ({ IdentifierCache } = hostRequire('hap-nodejs/dist/lib/model/IdentifierCache'));
+}
 
 const directions = ['up', 'down', 'left', 'right'];
+const labels = { up: '云台向上', down: '云台向下', left: '云台向左', right: '云台向右' };
 const selection = { deviceId: '30', homeId: '10', homeOwner: '20' };
 const capabilities = { supported: true, available: true, relativeStep: true, directions };
 const tick = () => new Promise(setImmediate);
@@ -22,6 +29,75 @@ async function fixture(t, overrides = {}) {
   const on = direction => accessory.getServiceById(hap.Service.Switch, `mijia-ptz-${direction}`)?.getCharacteristic(hap.Characteristic.On);
   return { accessory, calls, logs, manager, on, runtime };
 }
+
+test('Home app receives distinct direction names and configured names in HAP responses', async t => {
+  const f = await fixture(t);
+  const cache = new IdentifierCache('AA:BB:CC:DD:EE:01');
+  const names = [], configuredNames = [];
+  for (const direction of directions) {
+    const service = f.accessory.getServiceById(hap.Service.Switch, `mijia-ptz-${direction}`);
+    service._assignIDs(cache, f.accessory.UUID);
+    const wire = await service.toHAP(undefined, false);
+    assert.equal(service.displayName, labels[direction]);
+    const name = wire.characteristics.find(value => value.type === '23');
+    const configuredName = wire.characteristics.find(value => value.type === 'E3');
+    assert.equal(name?.value, labels[direction]);
+    assert.equal(configuredName?.value, labels[direction]);
+    names.push(name.value);
+    configuredNames.push(configuredName.value);
+  }
+  assert.equal(new Set(names).size, directions.length);
+  assert.equal(new Set(configuredNames).size, directions.length);
+  assert.deepEqual(f.calls, []);
+});
+
+test('direction naming migrates existing services without changing identity or custom configured names', async t => {
+  const accessory = new hap.Accessory('Existing PTZ camera', hap.uuid.generate('ptz-name-migration'));
+  const cache = new IdentifierCache('AA:BB:CC:DD:EE:02');
+  const previous = new Map();
+  for (const direction of directions) {
+    const service = accessory.addService(hap.Service.Switch, '摄像头开关', `mijia-ptz-${direction}`);
+    service._assignIDs(cache, accessory.UUID);
+    assert.equal(service.testCharacteristic(hap.Characteristic.ConfiguredName), false);
+    previous.set(direction, { service, iid: service.iid, onIid: service.getCharacteristic(hap.Characteristic.On).iid });
+  }
+  const calls = [], warnings = [];
+  accessory.on('characteristic-warning', value => warnings.push(value));
+  const runtime = { getPtzCapabilities: async () => capabilities, selected: () => selection,
+    movePtz: async direction => { calls.push(direction); return { accepted: true, direction }; } };
+  const configure = async () => {
+    const manager = await configurePtz({ api: { hap }, accessory, runtime, selection });
+    assert.ok(manager);
+    t.after(() => manager.shutdown());
+  };
+  const verifyIdentities = () => {
+    assert.equal(accessory.services.filter(service => service.UUID === hap.Service.Switch.UUID).length, directions.length);
+    for (const direction of directions) {
+      const original = previous.get(direction);
+      const service = accessory.getServiceById(hap.Service.Switch, `mijia-ptz-${direction}`);
+      service._assignIDs(cache, accessory.UUID);
+      assert.equal(service, original.service);
+      assert.equal(service.subtype, `mijia-ptz-${direction}`);
+      assert.equal(service.iid, original.iid);
+      assert.equal(service.getCharacteristic(hap.Characteristic.On).iid, original.onIid);
+      assert.equal(service.displayName, labels[direction]);
+      assert.equal(service.getCharacteristic(hap.Characteristic.Name).value, labels[direction]);
+    }
+    assert.deepEqual(calls, []);
+    assert.deepEqual(warnings, []);
+  };
+  await configure();
+  verifyIdentities();
+  for (const direction of directions) {
+    assert.equal(previous.get(direction).service.getCharacteristic(hap.Characteristic.ConfiguredName).value, labels[direction]);
+  }
+  previous.get('left').service.updateCharacteristic(hap.Characteristic.ConfiguredName, '自定左转');
+  previous.get('right').service.updateCharacteristic(hap.Characteristic.ConfiguredName, '');
+  await configure();
+  verifyIdentities();
+  assert.equal(previous.get('left').service.getCharacteristic(hap.Characteristic.ConfiguredName).value, '自定左转');
+  assert.equal(previous.get('right').service.getCharacteristic(hap.Characteristic.ConfiguredName).value, labels.right);
+});
 
 test('Home app direction switches send one finite action and always return to off', async t => {
   const f = await fixture(t);
