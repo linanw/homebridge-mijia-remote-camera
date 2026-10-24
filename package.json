@@ -1,0 +1,76 @@
+{
+  "name": "@linanw/homebridge-mijia-remote-camera",
+  "displayName": "米家远程摄像头",
+  "version": "0.4.0",
+  "description": "Xiaomi remote camera plugin with HomeKit, experimental Matter streaming and Mi Home name/room sync",
+  "license": "MIT",
+  "author": "linanw",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "main": "index.mjs",
+  "keywords": [
+    "homebridge-plugin",
+    "camera",
+    "xiaomi",
+    "mijia",
+    "matter",
+    "webrtc",
+    "supports-hap",
+    "supports-matter"
+  ],
+  "engines": {
+    "node": "^22.13.1 || ^24.0.0",
+    "homebridge": "^1.11.4 || ^2.0.0"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "index.mjs",
+    "lib/",
+    "bin/",
+    "homebridge-ui/",
+    "runtime-manifest.json",
+    "backend/*.java",
+    "config.schema.json",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE",
+    "npm-shrinkwrap.json",
+    "backend/bridge.jar",
+    "CHANGELOG.md",
+    "docs/"
+  ],
+  "bin": {
+    "mijia-camera-setup": "bin/setup.mjs",
+    "mijia-camera-diagnose": "bin/diagnose.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "2.2.6",
+    "@matter/main": "0.18.0",
+    "@matter/nodejs": "0.18.0",
+    "tar": "7.5.22",
+    "tough-cookie": "6.0.0",
+    "werift": "0.25.1"
+  },
+  "devDependencies": {
+    "homebridge": "2.4.0"
+  },
+  "homepage": "https://github.com/linanw/homebridge-mijia-remote-camera#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linanw/homebridge-mijia-remote-camera.git"
+  },
+  "bugs": {
+    "url": "https://github.com/linanw/homebridge-mijia-remote-camera/issues"
+  }
+}

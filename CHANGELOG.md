@@ -1,0 +1,26 @@
+# Changelog
+
+## 0.4.0 — 2026-10-24
+
+- Add 60-second selected-camera metadata polling and manual refresh for the Mi Home name, home and room. Preserve accessory identity and active media during metadata updates.
+- Add guarded owner-only device rename and moves to an existing room in the same Mi Home home, through the settings page and the vendor Matter metadata interface. Enable writes only after the runtime capability is validated. Each action sends one write and independently confirms the result; shared homes remain read-only.
+- Validate real Chinese device-name rename/restore and moves between two existing rooms with independent readback and unchanged credentials. Cloud name rules can remove characters; exact readback rejects an emoji-normalized result rather than reporting confirmation.
+- Keep Apple Home name/room writeback deferred. Room creation, room renaming, moves across homes and moves to the home root are unsupported.
+- Add asynchronous local runtime import in Homebridge UI without requiring a terminal. Keep the fixed component hashes, legal notices, storage boundary and active-owner protection.
+- Declare Node.js 22.13.1+ / 24 and Homebridge 1.11.4+ / 2 compatibility, with Homebridge 2.4.0 as the current development dependency. Add a public-source CI matrix and verification preparation notes.
+- Preserve Unicode metadata and the cross-language revision fingerprint even when a container configures stdout/native argument encoding as US-ASCII; use strict UTF-8 through an ASCII-only internal rename transport. Bound Matter metadata strings to 160 UTF-8 bytes without silently truncating edits.
+
+## 0.3.0
+
+- Add finite up/down/left/right direction steps for validated camera models, optional HomeKit direction switches and the vendor Matter direction-step interface.
+- Retain HomeKit video, real camera audio, talkback, night vision and experimental Matter camera streaming.
+
+## 0.2.x
+
+- Add experimental Matter Camera with WebRTC media, commissioning storage and multiple viewers sharing compatible encoders.
+- Improve stream cleanup, negotiation and independent talkback ownership.
+
+## 0.1.x
+
+- Introduce the scoped standalone Homebridge platform, official Xiaomi sign-in, home/device selection and native HomeKit camera streaming.
+- Add real PCMA/Opus listening, HomeKit talkback, validated night-vision control and local runtime import.

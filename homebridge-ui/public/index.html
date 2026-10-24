@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>米家远程摄像头</title>
+  <style>
+    :root{color-scheme:light dark;--ink:#1d2b32;--muted:#65767d;--line:#dce4e4;--panel:#f4f8f7;--accent:#087e72;--accent-soft:#e5f3ed}
+    .ptz-pad{display:grid;grid-template-columns:repeat(3,minmax(70px,110px));gap:8px;justify-content:center;margin:18px 0}.ptz-pad button{min-height:44px}#ptzUp{grid-column:2}#ptzLeft{grid-row:2;grid-column:1}.ptz-center{grid-row:2;grid-column:2;text-align:center;align-self:center}#ptzRight{grid-row:2;grid-column:3}#ptzDown{grid-row:3;grid-column:2}
+    *{box-sizing:border-box}body{margin:0;padding:24px;font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:transparent}main{max-width:760px;margin:auto}.eyebrow{font-size:11px;letter-spacing:.16em;color:var(--accent);font-weight:700}h1{font-size:28px;letter-spacing:-.03em;line-height:1.3;margin:7px 0 10px}p{margin:0 0 14px}.intro{color:var(--muted);max-width:600px}.status{display:flex;gap:10px;align-items:center;padding:12px 15px;border:1px solid var(--line);border-radius:12px;margin:22px 0;color:var(--muted)}.dot{height:8px;width:8px;flex:0 0 8px;border-radius:50%;background:#aab9bb}.status[data-live=true] .dot{background:var(--accent)}section{border:1px solid var(--line);border-radius:15px;padding:20px;margin:16px 0}h2{font-size:17px;margin:0 0 14px}.step{font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.1em;margin-bottom:4px}label{display:block;font-size:12px;font-weight:600;margin:14px 0 6px}select,input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font:inherit}button,.button{border:0;border-radius:8px;padding:10px 15px;background:var(--accent);color:white;font:inherit;font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;text-decoration:none;display:inline-block}button.secondary{background:var(--panel);color:var(--ink);border:1px solid var(--line)}button:disabled{opacity:.4;cursor:default}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:16px}.small{color:var(--muted);font-size:12px}.note{background:var(--panel);border-radius:9px;padding:12px 14px;margin-top:16px}.linkbox{background:var(--accent-soft);border-radius:10px;padding:14px;margin-top:15px}.linkbox p{margin:0 0 10px}.hide{display:none!important}.columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}.error{color:#ad3d2e;white-space:pre-line}#authState{margin-top:12px}.footer{padding:12px 2px 22px}.footer p{margin:0 0 7px}@media(max-width:550px){body{padding:14px}.columns{grid-template-columns:1fr}section{padding:16px}}@media(prefers-color-scheme:dark){:root{--ink:#e5efec;--muted:#a1b5af;--line:#334943;--panel:#22352f;--accent:#24a58e;--accent-soft:#1d3b31}}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">MIJIA · HOMEBRIDGE</div>
+  <h1>米家远程摄像头</h1>
+  <p class="intro">登录你的小米账号，选择家庭和摄像头。视频由此插件连接米家远程中继，再接入 Apple 家庭。</p>
+  <div id="runtimeStatus" class="status"><span class="dot"></span><div><span id="runtimeText">正在检查插件状态…</span><div id="connectionDetail" class="small"></div><div id="mediaDetail" class="small"></div><div id="audioDetail" class="small"></div></div></div>
+  <details style="margin:-8px 0 20px"><summary style="cursor:pointer;color:var(--muted)">连接诊断</summary><p class="small" style="margin-top:10px">以下报告只包含连接阶段和状态，可复制用于排查。</p><pre id="diagnosticsReport" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;padding:12px;background:var(--panel);border-radius:8px">尚未读取到连接状态。</pre><button id="copyDiagnostics" class="secondary" disabled>复制脱敏诊断</button><p id="diagnosticsHint" class="small" aria-live="polite" style="margin-top:8px"></p></details>
+  <section id="components" class="hide"><div class="step">首次设置 · 本地组件</div><h2>导入已有的运行包</h2>
+    <p class="small">请先将你已持有的运行包放入 Homebridge 数据目录，再填写目录内的文件名。导入只读取本地组件并核验完整性，不读取旧包中的账号信息。</p>
+    <label for="componentSource">本地运行包文件名或目录内路径</label><input id="componentSource" maxlength="4096" value="homebridge-mijia-remote-camera-0.1.0.tgz" autocomplete="off" spellcheck="false">
+    <div class="row"><button id="componentImport">导入并校验组件</button></div><p id="componentState" class="small" role="status" aria-live="polite">运行组件不随公开 npm 包分发；没有已有组件时，此插件暂时不能提供视频。</p>
+  </section>
+  <section id="bootstrap" class="hide"><div class="step">首次设置</div><h2>先启用插件</h2><p class="small">保存基本配置后，在 Homebridge 首页重新启动。然后回到这里登录小米账号。</p><button id="enable">启用并保存配置</button><div class="row"><button id="check" class="secondary">已重新启动，检查连接</button></div><p id="bootstrapText" class="small" style="margin-top:12px"></p></section>
+  <section><div class="step">01 · 小米账号</div><h2>通过官方页面登录</h2>
+    <label for="region">米家 App 的地区</label><select id="region"><option value="cn">中国大陆</option><option value="sg">新加坡</option><option value="de">欧洲（德国）</option><option value="us">美国</option><option value="ru">俄罗斯</option><option value="i2">印度</option></select>
+    <div class="row"><button id="login">生成登录链接</button><button id="cancel" class="secondary hide">取消</button><button id="load" class="secondary">使用已有登录，读取家庭</button></div>
+    <div id="loginLink" class="linkbox hide"><p>在已登录小米账号的浏览器中打开此官方页面，并完成确认。</p><a id="officialLogin" class="button" target="_blank" rel="noopener noreferrer">打开小米官方登录</a><p class="small" style="margin-top:10px">此链接只供本次授权，不要转发。无需复制密码或 Cookie。</p></div>
+    <div id="authState" class="small"></div>
+  </section>
+  <section><div class="step">02 · 选择设备</div><h2>家庭与摄像头</h2><div class="columns"><div><label for="homes">家庭</label><select id="homes" disabled><option>先读取家庭列表</option></select></div><div><label for="devices">摄像头</label><select id="devices" disabled><option>先选择家庭</option></select></div></div>
+    <label for="cameraName">Apple 家庭中的名称</label><input id="cameraName" maxlength="64" placeholder="选择摄像头后填写" disabled>
+    <div class="row"><button id="save" disabled>使用这台摄像头</button></div><p id="selectionState" class="small" style="margin-top:12px"></p>
+  </section>
+  <section id="metadataSection"><div class="step">米家资料同步</div><h2>当前摄像头的名称与房间</h2>
+    <p id="metadataCurrent" class="small">尚未读取米家资料。</p>
+    <label><input id="metadataEnabled" type="checkbox" style="width:auto" disabled> 自动读取米家名称和房间（每 60 秒）</label>
+    <div class="row"><button id="metadataRefresh" class="secondary" disabled>刷新米家资料</button><button id="metadataDiscard" class="secondary hide">放弃草稿，采用米家资料</button></div>
+    <label for="metadataName">米家中的摄像头名称</label><input id="metadataName" maxlength="160" disabled autocomplete="off">
+    <div class="row"><button id="metadataRename" disabled>修改米家名称</button></div>
+    <label for="metadataRoom">米家中的所属房间</label><select id="metadataRoom" disabled><option value="">尚未读取房间</option></select>
+    <div class="row"><button id="metadataMove" disabled>移到选定米家房间</button></div>
+    <p id="metadataState" class="small" role="status" aria-live="polite">正在读取同步状态…</p>
+    <p class="small">修改会写入米家；本页只管理当前摄像头，不新建或删除房间。Apple“家庭”的自定义名称和房间不会随插件自动改变。</p>
+  </section>
+  <section><div class="step">03 · 声音与夜视</div><h2>摄像头功能</h2>
+    <label for="nightMode">夜视模式</label><select id="nightMode" disabled><option value="auto">自动</option><option value="on">开启</option><option value="off">关闭</option></select>
+    <div class="row"><button id="nightRead" class="secondary">读取夜视状态</button><button id="nightSave" disabled>应用夜视模式</button></div><p id="nightState" class="small" aria-live="polite" style="margin-top:12px">读取摄像头实际模式后可修改。</p>
+    <p class="small">Apple“家庭”中的夜视开关表示允许夜视；自动模式显示为开。关闭后再次打开会设为始终开启；恢复自动请在这里选择。</p>
+    <label><input id="enableAudio" type="checkbox" style="width:auto"> 收听摄像头现场声音</label>
+    <label><input id="enableTalkback" type="checkbox" style="width:auto"> 允许 Apple“家庭”双向对讲</label>
+    <label><input id="enableNightVision" type="checkbox" style="width:auto"> 在 Apple“家庭”中显示夜视开关</label>
+    <div class="row"><button id="saveFeatures" class="secondary">保存功能配置</button></div><p id="featureState" class="small" aria-live="polite" style="margin-top:12px">功能配置保存后需重启摄像头子桥。对讲时，在“家庭”直播页面使用对讲按钮。</p>
+  </section>
+  <section id="ptzSection"><div class="step">04 · 云台</div><h2>调整摄像头方向</h2>
+    <p class="small">单击方向按钮移动一步。当前不提供角度定位或镜头变焦。</p>
+    <div class="ptz-pad" role="group" aria-label="摄像头云台方向">
+      <button id="ptzUp" class="secondary" aria-label="云台向上" disabled>↑ 向上</button>
+      <button id="ptzLeft" class="secondary" aria-label="云台向左" disabled>← 向左</button>
+      <span class="small ptz-center" aria-hidden="true">单步</span>
+      <button id="ptzRight" class="secondary" aria-label="云台向右" disabled>向右 →</button>
+      <button id="ptzDown" class="secondary" aria-label="云台向下" disabled>↓ 向下</button>
+    </div>
+    <p id="ptzState" class="small" role="status" aria-live="polite">正在检查云台支持…</p>
+    <div class="row"><button id="ptzRead" class="secondary">检查云台连接</button></div>
+    <label><input id="enablePtzSwitches" type="checkbox" style="width:auto"> 在 Apple“家庭”中显示四个云台方向开关</label>
+    <div class="row"><button id="savePtzFeatures" class="secondary">保存方向开关配置</button></div><p id="ptzFeatureState" class="small" aria-live="polite" style="margin-top:12px"></p>
+    <p class="small">方向开关打开后发送一次移动指令，随后自动回到关闭状态。保存后重启摄像头子桥生效。</p>
+  </section>
+  <section id="matterSection"><div class="step">05 · MATTER</div><h2>Matter 摄像头 · 开发设备</h2>
+    <p class="small">可在支持 Matter 摄像头的控制器中测试实时视频、声音与对讲。MatterDesk 配对时需允许开发证书；当前不承诺 Apple“家庭”支持 Matter 摄像头。</p>
+    <label><input id="enableMatter" type="checkbox" style="width:auto"> 启用独立 Matter 摄像头</label>
+    <div class="columns"><div><label for="matterPort">Matter TCP／UDP 端口</label><input id="matterPort" type="number" min="1024" max="65535" step="1" value="5540"></div><div><label for="matterInterface">局域网网卡</label><input id="matterInterface" maxlength="40" value="eth0" autocomplete="off" spellcheck="false"></div></div>
+    <div class="row"><button id="saveMatter" class="secondary">保存 Matter 配置</button></div><p id="matterConfigState" class="small" aria-live="polite" style="margin-top:12px">配置保存后需重启摄像头子桥。</p>
+    <div class="note"><div id="matterStatus" aria-live="polite">正在读取 Matter 状态…</div><div id="matterMedia" class="small"></div><p class="small" style="margin:8px 0 0">仅支持可直接互通的局域网；当前不使用 STUN 或 TURN。请填写 Homebridge 容器内实际连接局域网的网卡名称。</p></div>
+    <div class="row"><button id="matterPairing" disabled>显示私密配对码</button><button id="matterOpen" class="secondary" disabled>打开配对窗口</button><button id="matterClose" class="secondary" disabled>关闭配对窗口</button></div>
+    <p id="matterActionState" class="small" aria-live="polite" style="margin-top:12px"></p>
+    <div id="matterPairingPanel" class="linkbox hide"><p class="small">配对码仅供管理员在自己的控制器中使用，请勿转发。此处内容不会加入脱敏诊断。</p><label for="matterManualCode">手动配对码</label><input id="matterManualCode" readonly autocomplete="off" spellcheck="false"><label for="matterQrCode">二维码内容（MT:）</label><input id="matterQrCode" readonly autocomplete="off" spellcheck="false"></div>
+  </section>
+  <div id="error" class="error" role="alert"></div>
+  <div class="footer small"><p>首次连接可能需要一两分钟。提供实时视频、快照、现场声音和双向对讲；夜视模式可在上方控制。</p><p>配件发布后，在“Apple 家庭 → 添加配件 → 更多选项”中选择摄像头，使用摄像头启动日志中的 Setup Code 添加；子桥配对码可能与主桥不同。</p><p>登录数据只保存在 Homebridge 的私有插件目录，不写入插件配置。</p></div>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const regions = ['cn','sg','de','us','ru','i2'];
+  let homes=[], devices=[], loginId, pollTimer, statusTimer, clockTimer, configs=[], connected=false, authBusy=false, regionTouched=false, regionNeedsLogin=false, runtimeRegion='cn', diagnosticValue={}, statusReceivedAt=0, nightBusy=false, nightGeneration=0;
+  const messages = { plugin_not_running:'插件尚未启动。请先保存配置并重新启动 Homebridge。', auth_required:'需要完成小米登录。',
+    unauthenticated:'需要完成小米登录。', network_error:'连接小米服务失败，请稍后重试。', request_timeout:'请求超时，请稍后重试。',
+    login_expired:'登录链接已过期，请重新生成。', login_not_approved:'小米授权未完成，请重新尝试。', login_cancelled:'本次登录已取消。',
+    incomplete_session:'未取得完整的米家会话，请重新授权。', unsafe_url:'小米返回了未支持的登录地址，请重新尝试。',
+    credentials_write_failed:'无法保存登录数据，请检查 Homebridge 插件目录权限。', home_request_rejected:'家庭列表请求被拒绝，请检查账号权限与地区。',
+    home_request_failed:'无法读取家庭或设备列表，请检查网络与登录状态。', session_expired:'小米会话已过期，请重新登录。',
+    unsupported_protocol:'当前摄像头的远程传输协议尚不支持。', offline:'米家报告摄像头离线。', selection_missing:'请选择家庭和摄像头。',
+    backend_unavailable:'插件后端暂不可用，请查看 Homebridge 状态。', runtime_unavailable:'插件连接暂不可用，请重新启动 Homebridge。', authentication_required:'小米登录需要重新授权，请生成官方登录链接。', camera_offline:'米家报告摄像头离线。', camera_not_in_home:'所选家庭中未找到此摄像头，请重新选择。', unsupported_transport:'当前摄像头的远程协议尚不支持。', no_video:'摄像头尚未返回视频，请检查电源与网络。', connect_timeout:'连接摄像头超时，正在等待重连。', connection_failed:'远程连接未能建立，请检查摄像头与 Homebridge 的网络。', backend_failed:'取流后端未能启动，请查看插件状态。', storage_failed:'无法访问插件私有目录，请检查权限。', runtime_in_use:'另一个插件进程正在使用此目录。', query_timeout:'读取家庭或设备超时，请重试。', not_selected:'请登录并选择摄像头。', auth_in_progress:'正在进行小米授权，请完成或取消后继续。', night_vision_unsupported:'此型号暂不支持夜视控制。', night_vision_unavailable:'暂时无法读取夜视状态，请重试。', night_vision_rejected:'摄像头拒绝修改夜视模式。', night_vision_not_applied:'摄像头尚未确认新模式，请重新读取。', night_vision_timeout:'夜视请求超时，请重新读取。', ptz_unsupported:'此型号尚未验证云台控制。', ptz_unavailable:'云台远程连接尚未就绪。', ptz_rejected:'摄像头未接受云台指令。', ptz_timeout:'云台回复超时，请检查画面后再操作。', ptz_busy:'云台正在处理上一条指令，请稍后再试。' };
+  const states = new Set(['idle', 'starting', 'ready', 'retrying', 'blocked', 'stopped', 'paused']);
+  const stages = new Set(['device_lookup', 'provisioning', 'relay_connect', 'authentication', 'waiting_video']);
+  const reasons = new Set(['not_selected', 'starting', 'ready', 'stopped', 'retrying', 'connect_timeout',
+    'authentication_required', 'session_expired', 'camera_offline', 'camera_not_in_home', 'unsupported_transport',
+    'invalid_request', 'invalid_home_selection', 'invalid_home_response', 'missing_home_owner', 'invalid_device_response',
+    'device_pagination_incomplete', 'home_request_failed', 'home_request_rejected', 'discovery_failed',
+    'backend_failed', 'connection_failed', 'no_video', 'port_in_use', 'runtime_in_use', 'runtime_closed',
+    'runtime_unavailable', 'query_timeout', 'query_cancelled', 'invalid_backend_response', 'storage_failed', 'auth_in_progress']);
+  const mediaReasons = new Set(['media_unavailable', 'closed', 'source_not_ready', 'source_timeout', 'source_invalid',
+    'snapshot_busy', 'snapshot_timeout', 'snapshot_too_large', 'snapshot_invalid', 'ffmpeg_missing', 'ffmpeg_permission',
+    'ffmpeg_spawn', 'ffmpeg_exit', 'ffmpeg_cpu_unsupported', 'input_timeout', 'input_unavailable', 'input_invalid',
+    'decode_failed', 'encoder_unavailable', 'encode_failed', 'udp_unreachable', 'udp_in_use', 'udp_error',
+    'audio_source_unavailable', 'audio_source_invalid', 'audio_negotiation_invalid', 'audio_timeout', 'audio_muted',
+    'talkback_unavailable', 'talkback_invalid', 'talkback_timeout', 'talkback_overflow', 'talkback_muted',
+    'invalid_prepare', 'invalid_stream', 'start_timeout', 'prepare_timeout', 'receiver_timeout', 'stream_stopped', 'stream_reset']);
+  const mediaEvents = new Set(['snapshot_requested', 'snapshot_success', 'snapshot_failure', 'stream_prepared',
+    'stream_start', 'stream_first_frame', 'stream_failure', 'stream_stop', 'stream_rtcp_first',
+    'audio_start', 'audio_first_frame', 'audio_failure', 'audio_stop',
+    'talkback_start', 'talkback_first_frame', 'talkback_failure', 'talkback_stop']);
+  const mediaSignals = new Set(['SIGTERM', 'SIGKILL', 'SIGILL', 'SIGABRT', 'SIGSEGV', 'SIGBUS', 'SIGFPE']);
+  const mediaStreamStates = new Set(['idle', 'prepared', 'starting', 'active', 'stopped']);
+  const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  const timestamp = value => value === null || (typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value));
+  const matterStates = new Set(['disabled','starting','ready','failed','stopped']);
+  const matterReasons = new Set(['matter_disabled','matter_not_ready','matter_start_failed','matter_port_in_use','matter_configuration_invalid','matter_pairing_unavailable','matter_window_failed','matter_closed']);
+  const matterMessages = {matter_disabled:'Matter 尚未启用。',matter_not_ready:'Matter 尚未就绪，请检查配置并重启摄像头子桥。',matter_start_failed:'Matter 启动失败，请检查端口、网卡和插件状态。',matter_port_in_use:'Matter 端口已被占用，请修改配置并重启。',matter_configuration_invalid:'Matter 配置无效，请检查端口和网卡。',matter_pairing_unavailable:'暂时无法取得 Matter 配对码。',matter_window_failed:'配对窗口操作未完成，请重试。',matter_closed:'Matter 已停止。'};
+  let matterValue={}, matterBusy=false, matterGeneration=0, matterDirty=false, matterRestartPending=false;
+  function safeMatterStatus(value={}) {
+    if(!record(value))return {};
+    const result={};
+    for(const key of ['enabled','running','commissioned','commissioningWindowOpen'])if(typeof value[key]==='boolean')result[key]=value[key];
+    if(matterStates.has(value.state))result.state=value.state;
+    if(matterReasons.has(value.reason))result.reason=value.reason;
+    if(value.deviceType===322)result.deviceType=322;
+    for(const key of ['activeSessions','videoStreams','audioStreams','snapshotStreams'])if(count(value[key])&&value[key]<=100)result[key]=value[key];
+    if(record(value.media)){
+      const media={};for(const key of ['sessions','failures','videoPackets','audioPackets','talkPackets','talkBytes','activeSessions','maxSessions','activeSources','videoSources','audioSources','sourceJobs','sourceSockets'])if(count(value.media[key]))media[key]=value.media[key];
+      for(const key of ['active','microphoneMuted','speakerMuted','talkbackActive'])if(typeof value.media[key]==='boolean')media[key]=value.media[key];
+      const source=value.media;
+    for (const [key, allowed] of Object.entries({"lastFailure": ["negotiation_failed", "media_not_offered", "webrtc_timeout", "webrtc_failed", "webrtc_disconnected", "media_unavailable", "udp_error", "ffmpeg_unavailable", "ffmpeg_exit", "video_timeout"], "lastFailureStage": ["remote_description", "replace_video_track", "replace_audio_track", "create_answer", "create_offer", "local_description", "remote_answer"], "lastFailureType": ["Error", "TypeError", "RangeError", "OperationError", "InvalidStateError", "InvalidModificationError", "InvalidAccessError", "NotSupportedError", "SyntaxError", "AbortError"]})) {
+      if (allowed.includes(source[key])) media[key] = source[key];
+    }
+      if(Object.keys(media).length)result.media=media;
+    }
+    return result;
+  }
+  function clearMatterPairing(){++matterGeneration;$('matterManualCode').value='';$('matterQrCode').value='';$('matterPairingPanel').classList.add('hide');}
+  function matterReady(){return connected&&!authBusy&&!regionNeedsLogin&&!matterDirty&&!matterRestartPending&&configs[0]?.enableMatter===true&&$('enableMatter').checked&&matterValue.enabled===true&&matterValue.running===true&&matterValue.state==='ready';}
+  function renderMatter(){
+    const ready=matterReady(), value=matterValue;
+    $('matterPairing').disabled=!ready||matterBusy||value.commissioningWindowOpen!==true;
+    $('matterOpen').disabled=!ready||matterBusy||value.commissioningWindowOpen===true;
+    $('matterClose').disabled=!ready||matterBusy||value.commissioningWindowOpen!==true;
+    if(!ready||(value.commissioningWindowOpen!==true&&($('matterManualCode').value||$('matterQrCode').value)))clearMatterPairing();
+    const state=matterRestartPending?'配置已保存，请重启摄像头子桥并重新打开本页。':matterDirty?'配置尚未保存。':!$('enableMatter').checked?'Matter 尚未启用。':value.reason?matterMessages[value.reason]:value.running===true?`${value.commissioned?'已配对':'尚未配对'} · 配对窗口${value.commissioningWindowOpen?'已打开':'已关闭'}`:value.state==='starting'?'Matter 正在启动…':'Matter 尚未就绪，请重启摄像头子桥。';
+    $('matterStatus').textContent=state;
+    const details=[];if(count(value.activeSessions))details.push(`活动会话 ${value.activeSessions}`);
+    if(count(value.media?.videoPackets))details.push(`视频包 ${value.media.videoPackets}`);
+    if(count(value.media?.audioPackets))details.push(`声音包 ${value.media.audioPackets}`);
+    if(count(value.media?.talkBytes))details.push(`对讲 ${value.media.talkBytes} 字节`);
+    $('matterMedia').textContent=details.join(' · ');
+  }
+  
+  function safeMediaDiagnostics(value) {
+    const result = {};
+    for (const key of ['activeStreams', 'activeJobs']) if (count(value[key])) result[key] = value[key];
+    for (const [kind, counters, timestamps] of [
+      ['snapshot', ['requests', 'successes', 'failures', 'lastBytes'], ['lastRequestedAt', 'lastCompletedAt', 'lastFailureAt']],
+      ['stream', ['prepared', 'starts', 'firstFrames', 'failures', 'stops', 'rtcpPackets'],
+        ['lastPreparedAt', 'lastStartedAt', 'lastFirstFrameAt', 'lastStoppedAt', 'lastRtcpAt', 'lastFailureAt']],
+    ]) {
+      const source = value[kind];
+      if (!record(source)) continue;
+      const section = {};
+      for (const key of counters) if (count(source[key])) section[key] = source[key];
+      for (const key of timestamps) if (timestamp(source[key])) section[key] = source[key];
+      if (source.lastFailure === null || mediaReasons.has(source.lastFailure)) section.lastFailure = source.lastFailure;
+      if (kind === 'snapshot' && (source.lastElapsedMs === null || count(source.lastElapsedMs))) section.lastElapsedMs = source.lastElapsedMs;
+      if (kind === 'stream' && mediaStreamStates.has(source.state)) section.state = source.state;
+      if (Object.keys(section).length) result[kind] = section;
+    }
+    for (const [kind, allowedStates, counters] of [
+      ['audio', ['waiting', 'disabled', 'unavailable', 'starting', 'streaming', 'muted'], ['starts', 'firstFrames', 'failures', 'rtcpPackets']],
+      ['talkback', ['idle', 'disabled', 'starting', 'streaming', 'unavailable', 'muted'], ['starts', 'decodedBytes', 'failures']],
+    ]) {
+      const source = value[kind];
+      if (!record(source)) continue;
+      const section = {};
+      for (const key of ['enabled', 'sourceReceived', 'muted']) if (typeof source[key] === 'boolean') section[key] = source[key];
+      for (const key of counters) if (count(source[key])) section[key] = source[key];
+      if (allowedStates.includes(source.state)) section.state = source.state;
+      if (source.lastFailure === null || mediaReasons.has(source.lastFailure)) section.lastFailure = source.lastFailure;
+      if (timestamp(source.lastEventAt)) section.lastEventAt = source.lastEventAt;
+      result[kind] = section;
+    }
+    if (value.lastEvent === null) result.lastEvent = null;
+    else if (record(value.lastEvent) && mediaEvents.has(value.lastEvent.type)
+      && typeof value.lastEvent.at === 'string' && timestamp(value.lastEvent.at)) {
+      const source = value.lastEvent, event = { type: source.type, at: source.at };
+      for (const key of ['width', 'height', 'bytes', 'elapsedMs', 'rtcpPackets']) if (count(source[key])) event[key] = source[key];
+      if (mediaReasons.has(source.reason)) event.reason = source.reason;
+      if (count(source.exitCode) && source.exitCode <= 65535) event.exitCode = source.exitCode;
+      if (mediaSignals.has(source.signal)) event.signal = source.signal;
+      if (typeof source.cached === 'boolean') event.cached = source.cached;
+      result.lastEvent = event;
+    }
+    return result;
+  }
+  
+  /** A deliberately small report suitable for sharing during connection troubleshooting. */
+  function safeDiagnostics(value = {}) {
+    const result = {};
+    if (!record(value)) return result;
+    if (states.has(value.state)) result.state = value.state;
+    if (reasons.has(value.reason)) result.reason = value.reason;
+    if (stages.has(value.stage)) result.stage = value.stage;
+    for (const key of ['ready', 'videoReceived', 'paused', 'selected', 'authenticated']) {
+      if (typeof value[key] === 'boolean') result[key] = value[key];
+    }
+    if (['cn', 'sg', 'de', 'us', 'ru', 'i2'].includes(value.region)) result.region = value.region;
+    for (const key of ['attempt', 'connectingElapsedSeconds', 'retryInSeconds', 'vendor']) {
+      if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= (key === 'vendor' ? 100 : 1000000000)) result[key] = value[key];
+    }
+    if (value.lastFailure === null || reasons.has(value.lastFailure)) result.lastFailure = value.lastFailure;
+    for (const key of ['connectingSince', 'retryAt', 'lastFailureAt']) {
+      if (timestamp(value[key])) result[key] = value[key];
+    }
+    if (record(value.audio)) {
+      const audio = {};
+      for (const key of ['enabled', 'received', 'talkbackEnabled', 'talkbackSupported']) if (typeof value.audio[key] === 'boolean') audio[key] = value.audio[key];
+      if (['PCMA', 'OPUS'].includes(value.audio.codec)) audio.codec = value.audio.codec;
+      if ([8000, 16000, 48000].includes(value.audio.sampleRate)) audio.sampleRate = value.audio.sampleRate;
+      if ([1, 2].includes(value.audio.channels)) audio.channels = value.audio.channels;
+      result.audio = audio;
+    }
+    if(record(value.matter)){const matter=safeMatterStatus(value.matter);if(Object.keys(matter).length)result.matter=matter;}
+    if (value.media === null) result.media = null;
+    else if (record(value.media)) {
+      const media = safeMediaDiagnostics(value.media);
+      if (Object.keys(media).length) result.media = media;
+    }
+    return result;
+  }
+  const stageLabels={device_lookup:'正在核对摄像头',provisioning:'正在获取远程连接信息',relay_connect:'正在连接远程中继',authentication:'正在验证摄像头会话',waiting_video:'正在等待摄像头首个关键帧'};
+  function renderRuntime(){
+    const value=diagnosticValue, since=Math.max(0,Math.floor((Date.now()-statusReceivedAt)/1000));
+    const live=value.ready===true&&value.videoReceived===true;
+    $('runtimeStatus').dataset.live=String(live);
+    const detail=[];
+    if(value.state==='starting'){
+      $('runtimeText').textContent=stageLabels[value.stage]||'正在连接摄像头…';
+      if(value.attempt>0)detail.push(`正在尝试第 ${value.attempt} 次`);
+      if(Number.isSafeInteger(value.connectingElapsedSeconds))detail.push(`已等待 ${value.connectingElapsedSeconds+since} 秒`);
+    }else if(value.state==='retrying'){
+      const remaining=Number.isSafeInteger(value.retryInSeconds)?Math.max(0,value.retryInSeconds-since):0;
+      $('runtimeText').textContent=remaining>0?`连接中断，将在 ${remaining} 秒后重试。`:'连接中断，即将重试。';
+      if(value.attempt>0)detail.push(`第 ${value.attempt} 次尝试未完成`);
+    }else if(live){
+      $('runtimeText').textContent='已收到摄像头视频。';
+      if(value.attempt>0)detail.push(`第 ${value.attempt} 次尝试已连接`);
+    }else if(value.ready===true||value.state==='ready'){
+      $('runtimeText').textContent='等待摄像头首帧。';
+    }else{
+      const states={idle:'请登录并选择摄像头。',stopped:'连接已停止。',paused:'连接已暂停，请选择摄像头启动。',blocked:'连接需要处理。'};
+      $('runtimeText').textContent=messages[value.reason]||states[value.state]||'插件已运行，可以登录并选择摄像头。';
+      if(value.attempt>0)detail.push(`已尝试 ${value.attempt} 次`);
+    }
+    if(value.lastFailure)detail.push(`上次连接：${messages[value.lastFailure]||'未能完成，请查看连接诊断。'}`);
+    $('connectionDetail').textContent=detail.join(' · ');
+    const media=[];
+    if(Number.isSafeInteger(value.media?.snapshot?.requests))media.push(`快照 ${value.media.snapshot.requests} 次`);
+    if(Number.isSafeInteger(value.media?.stream?.starts))media.push(`直播 ${value.media.stream.starts} 次`);
+    $('mediaDetail').textContent=media.length?'HomeKit 媒体请求：'+media.join(' · '):'';
+    const audio=value.audio;
+    $('audioDetail').textContent=audio?.enabled===false?'声音已关闭。':audio?.received===true
+      ?'已收到真实摄像头声音'+(audio.talkbackSupported?' · 支持双向对讲。':'。')
+      :'等待摄像头声音；视频可独立播放。';
+  }
+  function reason(error){return error?.error?.reason || error?.requestError?.reason || error?.reason || error?.message;}
+  function showError(error){const key=reason(error); $('error').textContent=messages[key] || '操作未完成，请检查插件状态后重试。'; if(key==='plugin_not_running')$('bootstrap').classList.remove('hide');}
+  function clearError(){$('error').textContent='';}
+  async function request(path,payload={}){return homebridge.request(path,payload);}
+  function options(select,items,render,empty){select.replaceChildren(); if(!items.length){const option=document.createElement('option');option.textContent=empty;select.append(option);select.disabled=true;return;} items.forEach((item,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=render(item);select.append(option)});select.disabled=false;}
+  function chosenHome(){return homes[Number($('homes').value)];}
+  function chosenDevice(){return devices[Number($('devices').value)];}
+  function setLoginBusy(busy){authBusy=busy;if(busy||regionNeedsLogin)resetMetadata();$('login').disabled=busy||!connected; $('load').disabled=busy||!connected||regionNeedsLogin; $('region').disabled=busy; $('cancel').classList.toggle('hide',!busy);renderMatter();renderPtz();}
+  function hideLoginLink(){$('loginLink').classList.add('hide');$('officialLogin').removeAttribute('href');}
+  async function status(){try{const value=await request('/status');connected=true;$('components').classList.add('hide');$('bootstrap').classList.add('hide');if(regions.includes(value.region)){runtimeRegion=value.region;if(!regionTouched&&!authBusy)$('region').value=runtimeRegion;}regionNeedsLogin=$('region').value!==runtimeRegion;matterValue=safeMatterStatus(value.matter);setLoginBusy(authBusy);diagnosticValue=safeDiagnostics(value);statusReceivedAt=Date.now();$('diagnosticsReport').textContent=JSON.stringify(diagnosticValue,null,2);$('copyDiagnostics').disabled=false;renderRuntime();renderMatter();await readPtzCapabilities();await readMetadataStatus();}catch(error){connected=false;resetMetadata();resetPtz();matterValue={};clearMatterPairing();renderMatter();$('login').disabled=true;$('load').disabled=true;$('runtimeStatus').dataset.live='false';$('runtimeText').textContent='等待插件启动';$('connectionDetail').textContent='';$('mediaDetail').textContent='';showError(error);}}
+  $('copyDiagnostics').onclick=async()=>{try{if(typeof navigator==='undefined'||typeof navigator.clipboard?.writeText!=='function')throw Error('clipboard_unavailable');await navigator.clipboard.writeText($('diagnosticsReport').textContent);$('diagnosticsHint').textContent='已复制脱敏诊断。';}catch{$('diagnosticsHint').textContent='浏览器无法自动复制，请手动选中上方诊断报告并复制。';}};
+  async function loadHomes(){resetPtz(true);clearMatterPairing();clearError();$('selectionState').textContent='正在读取家庭…';try{const response=await request('/homes');homes=Array.isArray(response)?response:(response.homes||[]);options($('homes'),homes,home=>(home.name||'未命名家庭')+(home.shared?' · 共享家庭':''),'当前地区没有可访问的家庭');$('selectionState').textContent=homes.length?'请选择目标家庭。':'请检查地区及账号的家庭访问权限。';devices=[];options($('devices'),[],()=>'', '先选择家庭');$('save').disabled=true;$('cameraName').disabled=true;if(homes.length)await loadDevices();}catch(error){$('selectionState').textContent='';showError(error);}}
+  async function loadDevices(){const home=chosenHome();if(!home)return;resetPtz(true);clearMatterPairing();clearError();$('selectionState').textContent='正在读取此家庭的摄像头…';$('save').disabled=true;try{const response=await request('/devices',{homeId:String(home.id),homeOwner:String(home.ownerId)});devices=Array.isArray(response)?response:(response.devices||[]);options($('devices'),devices,device=>(device.name||device.model||'摄像头')+(device.online===false?' · 离线':''),'此家庭没有摄像头');$('selectionState').textContent='';deviceChanged();}catch(error){devices=[];options($('devices'),[],()=>'', '读取设备失败');$('selectionState').textContent='';showError(error);}}
+  function deviceChanged(){resetPtz(true);clearMatterPairing();const device=chosenDevice();$('cameraName').disabled=!device;$('save').disabled=!device;$('cameraName').value=device?(device.name||'米家摄像头'):'';}
+  async function pollAuth(){try{const value=await request('/auth/status',{loginId});if(value.state==='waiting'||value.state==='starting'){$('authState').textContent=`等待你在小米页面确认，剩余 ${value.remainingSeconds||0} 秒。`;pollTimer=setTimeout(pollAuth,1200);return;}setLoginBusy(false);hideLoginLink();if(value.success||value.state==='complete'){$('authState').textContent='登录成功。正在读取家庭列表…';await status();await loadHomes();}else $('authState').textContent=messages[value.reason]||'本次登录未完成，可重新生成链接。';}catch(error){setLoginBusy(false);hideLoginLink();showError(error);}}
+  $('login').onclick=async()=>{resetNight();clearError();hideLoginLink();clearTimeout(pollTimer);setLoginBusy(true);$('authState').textContent='正在生成官方登录链接…';try{const value=await request('/auth/start',{region:$('region').value});const url=new URL(value.loginUrl);if(url.protocol!=='https:'||!(url.hostname==='mi.com'||url.hostname.endsWith('.mi.com')||url.hostname==='xiaomi.com'||url.hostname.endsWith('.xiaomi.com')))throw Error('unsafe_url');loginId=value.loginId;$('officialLogin').href=url.href;$('loginLink').classList.remove('hide');$('authState').textContent='请打开链接完成授权。';pollTimer=setTimeout(pollAuth,1000);}catch(error){setLoginBusy(false);showError(error);$('authState').textContent='';}};
+  $('cancel').onclick=async()=>{clearTimeout(pollTimer);try{await request('/auth/cancel',{loginId});}catch(error){showError(error);}hideLoginLink();setLoginBusy(false);$('authState').textContent='已取消。已有登录数据保留。';};
+  let metadataValue={},metadataBusy=false,metadataDraft=false,metadataDraftGuard=null,metadataGeneration=0,metadataNotice='';
+  const metadataErrors={metadata_unavailable:'米家资料暂不可用，请稍后刷新。',metadata_incomplete:'米家返回的房间资料不完整，尚未采用。',metadata_conflict:'米家资料已变化，草稿已保留。请核对后重新编辑。',metadata_busy:'上一项资料操作尚未完成，请稍后再试。',metadata_write_unsupported:'当前环境尚未验证米家写回，编辑功能未启用。',metadata_not_owner:'当前账号不是此家庭的所有者，暂时只读。',metadata_unconfirmed:'写入结果尚未确认。请先刷新米家资料，不要重复提交。',metadata_not_applied:'米家尚未回读到修改后的资料，请刷新核对。',metadata_rejected:'米家未接受修改，请检查账号权限。'};
+  const metadataGuard=()=>({expectedIdentity:metadataValue.identity,expectedSourceEpoch:metadataValue.sourceEpoch,expectedRevision:metadataValue.revision});
+  function metadataAllowed(){return connected&&!authBusy&&!regionNeedsLogin&&!metadataBusy&&!!metadataValue.metadata;}
+  function renderMetadata(){
+    const v=metadataValue,m=v.metadata,c=v.capabilities||{},ready=metadataAllowed();
+    $('metadataEnabled').checked=v.enabled===true;$('metadataEnabled').disabled=!connected||authBusy||regionNeedsLogin||metadataBusy||c.syncConfig!==true;
+    $('metadataRefresh').disabled=!connected||authBusy||regionNeedsLogin||metadataBusy||c.read!==true;
+    const conflict=metadataDraft&&metadataDraftGuard&&(metadataDraftGuard.expectedIdentity!==v.identity||metadataDraftGuard.expectedSourceEpoch!==v.sourceEpoch||metadataDraftGuard.expectedRevision!==v.revision);
+    $('metadataCurrent').textContent=m?`当前米家名称：${m.name} · 家庭：${m.homeName} · 房间：${m.roomName||'未分房'}`:'尚未读取当前摄像头的米家资料。';
+    if(!metadataDraft){
+      $('metadataName').value=m?.name||'';$('metadataRoom').replaceChildren();
+      const empty=document.createElement('option');empty.value='';empty.textContent='未分房（只读）';empty.disabled=true;$('metadataRoom').append(empty);
+      for(const room of Array.isArray(m?.rooms)?m.rooms:[]){const item=document.createElement('option');item.value=room.id;item.textContent=room.name;$('metadataRoom').append(item);}
+      $('metadataRoom').value=m?.roomId||'';
+    }
+    $('metadataName').disabled=!ready||c.rename!==true;$('metadataRoom').disabled=!ready||c.move!==true;
+    $('metadataRename').disabled=!ready||c.rename!==true||!!conflict||!$('metadataName').value.trim();
+    $('metadataMove').disabled=!ready||c.move!==true||!!conflict||!$('metadataRoom').value;
+    $('metadataDiscard').classList.toggle('hide',!metadataDraft);
+    if(metadataBusy)$('metadataState').textContent='正在处理米家资料…';
+    else if(conflict)$('metadataState').textContent=metadataErrors.metadata_conflict;
+    else if(metadataNotice)$('metadataState').textContent=metadataNotice;
+    else if(v.lastError)$('metadataState').textContent=metadataErrors[v.lastError]||messages[v.lastError]||metadataErrors.metadata_unavailable;
+    else if(!m)$('metadataState').textContent='选择摄像头后可读取米家名称和房间。';
+    else $('metadataState').textContent=(v.loading?'正在读取米家资料…':`已读取米家资料${v.lastSuccessAt?' · '+v.lastSuccessAt:''}`)+(c.rename===true&&c.move===true?'':' · 当前仅支持读取。');
+  }
+  function resetMetadata(){metadataGeneration++;metadataValue={};metadataDraft=false;metadataDraftGuard=null;metadataNotice='';renderMetadata();}
+  async function readMetadataStatus(){
+    if(!connected||authBusy||regionNeedsLogin){resetMetadata();return;}
+    const generation=metadataGeneration;
+    try{const value=await request('/metadata/status');if(generation!==metadataGeneration)return;metadataValue=value&&typeof value==='object'?value:{};renderMetadata();}
+    catch{if(generation===metadataGeneration){metadataValue={};renderMetadata();}}
+  }
+  function metadataEdited(){metadataNotice='';if(!metadataDraft){metadataDraftGuard=metadataGuard();metadataDraft=true;}renderMetadata();}
+  $('metadataName').oninput=metadataEdited;$('metadataRoom').onchange=metadataEdited;
+  $('metadataDiscard').onclick=()=>{metadataDraft=false;metadataDraftGuard=null;metadataNotice='';renderMetadata();};
+  $('metadataRefresh').onclick=async()=>{
+    if(metadataBusy)return;const generation=metadataGeneration;metadataNotice='';metadataBusy=true;renderMetadata();
+    try{await request('/metadata/refresh');if(generation!==metadataGeneration)return;await readMetadataStatus();}
+    catch(error){if(generation===metadataGeneration)metadataNotice=metadataErrors[reason(error)]||messages[reason(error)]||metadataErrors.metadata_unavailable;}
+    finally{metadataBusy=false;renderMetadata();}
+  };
+  $('metadataEnabled').onchange=async()=>{
+    if(metadataBusy)return;const generation=metadataGeneration,enabled=$('metadataEnabled').checked;metadataNotice='';metadataBusy=true;renderMetadata();
+    try{const value=await request('/metadata/sync',{...metadataGuard(),enabled});if(generation!==metadataGeneration)return;metadataValue=value;}
+    catch(error){if(generation===metadataGeneration)metadataNotice=metadataErrors[reason(error)]||messages[reason(error)]||metadataErrors.metadata_unavailable;}
+    finally{metadataBusy=false;renderMetadata();}
+  };
+  async function updateMetadata(operation){
+    if(!metadataAllowed()||metadataValue.capabilities?.[operation=== 'rename'?'rename':'move']!==true)return;
+    const requestedName=$('metadataName').value;
+    if(operation==='rename'&&(!requestedName.length||requestedName.length>160||!requestedName.isWellFormed()||requestedName.trim()!==requestedName||/[\p{Cc}]/u.test(requestedName))){metadataNotice='名称须为 1–160 个字符，且不含首尾空白或控制字符。';renderMetadata();return;}
+    const generation=metadataGeneration,guard=metadataDraftGuard||metadataGuard();metadataNotice='';metadataBusy=true;renderMetadata();
+    try{
+      const payload=operation==='rename'?{name:$('metadataName').value}:{roomId:$('metadataRoom').value};
+      const result=await request('/metadata/update',{...guard,operation,...payload});
+      if(generation!==metadataGeneration)return;
+      if(result?.confirmed!==true)throw {reason:'metadata_unconfirmed'};
+      metadataDraft=false;metadataDraftGuard=null;await readMetadataStatus();if(generation!==metadataGeneration)return;metadataNotice='已在米家回读确认修改。';
+    }catch(error){if(generation===metadataGeneration)metadataNotice=metadataErrors[reason(error)]||messages[reason(error)]||metadataErrors.metadata_unavailable;}
+    finally{metadataBusy=false;if(generation===metadataGeneration)renderMetadata();}
+  }
+  $('metadataRename').onclick=()=>updateMetadata('rename');$('metadataMove').onclick=()=>updateMetadata('move');
+  let componentTimer,componentBusy=false;
+  const componentErrors={invalid_request:'请填写 Homebridge 数据目录内的运行包文件名。',runtime_components_missing:'未找到完整运行组件，请检查本地运行包。',runtime_components_invalid:'组件校验失败，请保留原目录并核对运行包。',runtime_in_use:'插件正在使用组件目录。请先停用米家平台并重启 Homebridge，再导入。',storage_failed:'无法访问 Homebridge 数据目录，请检查权限。',setup_failed:'本地导入未完成，请检查运行包后重试。'};
+  function renderComponentImport(value){
+    componentBusy=value?.state==='running';$('componentSource').disabled=componentBusy;$('componentImport').disabled=componentBusy;
+    $('componentState').textContent=componentBusy?'正在校验并导入本地组件，请稍候…':value?.success===true?'组件已完成校验。请重启摄像头子桥，然后回到本页登录。':value?.state==='error'?(componentErrors[value.reason]||componentErrors.setup_failed):'运行组件不随公开 npm 包分发；请提供你已持有的本地运行包。';
+    clearTimeout(componentTimer);if(componentBusy)componentTimer=setTimeout(pollComponentImport,1000);
+  }
+  async function pollComponentImport(){try{renderComponentImport(await request('/components/import-status'));}catch{$('componentState').textContent='暂时无法读取导入进度，请重新打开设置页检查。';componentBusy=false;$('componentSource').disabled=false;$('componentImport').disabled=false;}}
+  $('componentImport').onclick=async()=>{
+    if(componentBusy)return;componentBusy=true;$('componentImport').disabled=true;$('componentSource').disabled=true;
+    try{renderComponentImport(await request('/components/import',{source:$('componentSource').value.trim()}));}
+    catch{renderComponentImport({state:'error',reason:'setup_failed'});}
+  };
+  $('region').onchange=()=>{resetNight();regionTouched=true;regionNeedsLogin=$('region').value!==runtimeRegion;setLoginBusy(authBusy);$('authState').textContent=regionNeedsLogin?'已切换地区，请生成新登录链接后读取家庭。':'';}; $('load').onclick=loadHomes; $('homes').onchange=loadDevices; $('devices').onchange=deviceChanged;
+  $('save').onclick=async()=>{const home=chosenHome(),device=chosenDevice();if(!home||!device)return;resetMetadata();resetPtz(true);clearMatterPairing();clearError();$('save').disabled=true;try{const result=await request('/select',{homeId:String(home.id),homeOwner:String(home.ownerId),deviceId:String(device.deviceId||device.did),name:$('cameraName').value.trim()||device.name,model:device.model,region:$('region').value});resetNight();ptzSelectionDirty=Boolean(result.restartRequired);$('selectionState').textContent=result.restartRequired?'已保存新的摄像头。请重启 Homebridge 使配件变更生效。':'选择已保存，正在连接摄像头。配对码见摄像头启动日志中的 Setup Code。';await status();}catch(error){showError(error);}finally{$('save').disabled=false;}};
+  $('enable').onclick=async()=>{clearError();try{if(!configs.length){configs=[{platform:'MijiaRemoteCamera',name:'米家远程摄像头',region:$('region').value}];await homebridge.updatePluginConfig(configs);}await homebridge.savePluginConfig();$('bootstrapText').textContent='已保存。请在 Homebridge 首页重新启动，再回到这里检查连接。';}catch(error){showError(error);}};
+  $('check').onclick=status;
+  function resetNight(){resetPtz();clearMatterPairing();++nightGeneration;$('nightMode').disabled=true;$('nightSave').disabled=true;$('nightState').textContent='读取摄像头实际模式后可修改。';}
+  async function nightRequest(write=false){
+    if(nightBusy)return;nightBusy=true;const generation=nightGeneration;$('nightRead').disabled=true;$('nightSave').disabled=true;$('nightMode').disabled=true;
+    $('nightState').textContent=write?'正在修改并核对摄像头模式…':'正在读取摄像头实际模式…';
+    try{const value=await request(write?'/night/set':'/night/get',write?{mode:$('nightMode').value}:{});
+      if(generation!==nightGeneration)return;
+      if(!['auto','on','off'].includes(value.mode))throw Error('night_vision_unavailable');
+      $('nightMode').value=value.mode;$('nightMode').disabled=false;
+      $('nightState').textContent='摄像头已确认：'+({auto:'自动',on:'开启',off:'关闭'}[value.mode])+'。';
+    }catch(error){if(generation!==nightGeneration)return;$('nightState').textContent=messages[reason(error)]||'夜视操作未完成，请重新读取。';}
+    finally{nightBusy=false;$('nightRead').disabled=false;$('nightSave').disabled=$('nightMode').disabled;}
+  }
+  $('nightRead').onclick=()=>nightRequest();$('nightSave').onclick=()=>nightRequest(true);
+  $('enableAudio').onchange=()=>{$('enableTalkback').disabled=!$('enableAudio').checked;};
+  let featureSaving=false;
+  $('saveFeatures').onclick=async()=>{if(featureSaving)return;featureSaving=true;$('saveFeatures').disabled=$('savePtzFeatures').disabled=true;$('featureState').textContent=$('ptzFeatureState').textContent='正在保存…';try{
+    const next={...(configs[0]||{platform:'MijiaRemoteCamera',name:'米家远程摄像头',region:$('region').value})};
+    for(const key of ['enableAudio','enableTalkback','enableNightVision','enablePtzSwitches'])next[key]=$(key).checked;
+    const updated=[next,...configs.slice(1)];await homebridge.updatePluginConfig(updated);await homebridge.savePluginConfig();configs=updated;
+    $('featureState').textContent=$('ptzFeatureState').textContent='配置已保存，请重启摄像头子桥以应用。';
+  }catch(error){$('featureState').textContent=$('ptzFeatureState').textContent='配置未能保存，请重试。';showError(error);}finally{featureSaving=false;$('saveFeatures').disabled=$('savePtzFeatures').disabled=false;}};
+  $('savePtzFeatures').onclick=$('saveFeatures').onclick;
+  for(const key of ['enableMatter','matterPort','matterInterface'])$(key).onchange=()=>{matterDirty=true;clearMatterPairing();renderMatter();};
+  $('saveMatter').onclick=async()=>{clearMatterPairing();try{
+    const port=Number($('matterPort').value), networkInterface=$('matterInterface').value.trim();
+    if(!Number.isInteger(port)||port<1024||port>65535||!/^[A-Za-z0-9_.:-]{1,40}$/.test(networkInterface)){ $('matterConfigState').textContent='请填写 1024–65535 的整数端口和有效的网卡名称。';return; }
+    const next={...(configs[0]||{platform:'MijiaRemoteCamera',name:'米家远程摄像头',region:$('region').value}),enableMatter:$('enableMatter').checked,matterPort:port,matterInterface:networkInterface};
+    const updated=[next,...configs.slice(1)];await homebridge.updatePluginConfig(updated);await homebridge.savePluginConfig();configs=updated;matterDirty=false;matterRestartPending=true;
+    $('matterConfigState').textContent='配置已保存，请重启摄像头子桥并重新打开本页。';renderMatter();
+  }catch{ $('matterConfigState').textContent='Matter 配置未能保存，请重试。';renderMatter();}};
+  async function matterAction(action){
+    if(!matterReady()||matterBusy)return;clearMatterPairing();const generation=matterGeneration;matterBusy=true;renderMatter();$('matterActionState').textContent='正在处理…';
+    try{const value=await request('/matter/'+action);if(generation!==matterGeneration)return;
+      if(action==='pairing'){
+        if(!/^(?:\d{11}|\d{21})$/.test(value?.manualPairingCode)||typeof value?.qrPairingCode!=='string'||!/^MT:[0-9A-Z.:-]{10,250}$/.test(value.qrPairingCode))throw Error('matter_pairing_unavailable');
+        $('matterManualCode').value=value.manualPairingCode;$('matterQrCode').value=value.qrPairingCode;$('matterPairingPanel').classList.remove('hide');$('matterActionState').textContent='已显示私密配对码，请在自己的控制器中完成配对。';
+      }else{matterValue=safeMatterStatus(value);$('matterActionState').textContent=action==='open-window'?'配对窗口已打开，可显示配对码。':'配对窗口已关闭。';}
+    }catch(error){if(generation!==matterGeneration)return;clearMatterPairing();$('matterActionState').textContent=matterMessages[reason(error)]||'Matter 操作未完成，请检查状态后重试。';}
+    finally{matterBusy=false;renderMatter();}
+  }
+  $('matterPairing').onclick=()=>matterAction('pairing');$('matterOpen').onclick=()=>matterAction('open-window');$('matterClose').onclick=()=>matterAction('close-window');
+  const ptzDirections=['up','down','left','right'];
+  const ptzLabels={up:'向上',down:'向下',left:'向左',right:'向右'};
+  let ptzValue={},ptzBusy=false,ptzReading=false,ptzGeneration=0,ptzSelectionDirty=false;
+  function ptzReady(){return connected&&!authBusy&&!regionNeedsLogin&&!ptzSelectionDirty&&ptzValue.supported===true&&ptzValue.available===true&&ptzValue.relativeStep===true;}
+  function renderPtz(){
+    for(const direction of ptzDirections)$('ptz'+direction[0].toUpperCase()+direction.slice(1)).disabled=!ptzReady()||ptzBusy;
+    $('ptzRead').disabled=!connected||authBusy||regionNeedsLogin||ptzBusy||ptzReading||ptzSelectionDirty;
+  }
+  function resetPtz(selectionDirty=false){++ptzGeneration;ptzValue={};if(selectionDirty)ptzSelectionDirty=true;$('ptzState').textContent=ptzSelectionDirty?'请先保存摄像头选择，再检查云台连接。':'请检查云台连接。';renderPtz();}
+  async function readPtzCapabilities(){
+    if(!connected||authBusy||regionNeedsLogin||ptzReading||ptzBusy||ptzSelectionDirty){renderPtz();return;}
+    const generation=ptzGeneration;ptzReading=true;renderPtz();
+    try{const value=await request('/ptz/capabilities');if(generation!==ptzGeneration)return;
+      const supported=value?.supported===true&&value?.relativeStep===true&&Array.isArray(value.directions)&&ptzDirections.every(d=>value.directions.includes(d));
+      ptzValue={supported,available:supported&&value.available===true,relativeStep:supported};
+      $('ptzState').textContent=!supported?'此型号尚未验证云台控制。':!ptzValue.available?'等待摄像头云台远程连接…':'云台已就绪，单击方向按钮移动一步。';
+    }catch(error){if(generation!==ptzGeneration)return;ptzValue={};$('ptzState').textContent=messages[reason(error)]||'云台状态读取失败，请重试。';}
+    finally{ptzReading=false;renderPtz();}
+  }
+  async function movePtz(direction){
+    if(!ptzDirections.includes(direction)||!ptzReady()||ptzBusy)return;
+    const generation=ptzGeneration;ptzBusy=true;renderPtz();$('ptzState').textContent='正在发送'+ptzLabels[direction]+'单步指令…';
+    try{const value=await request('/ptz/move',{direction});if(generation!==ptzGeneration)return;
+      if(value?.accepted!==true||value.direction!==direction)throw Error('ptz_rejected');
+      $('ptzState').textContent='摄像头已接受'+ptzLabels[direction]+'单步指令。';
+    }catch(error){if(generation!==ptzGeneration)return;$('ptzState').textContent=messages[reason(error)]||'云台操作未完成，请重试。';}
+    finally{ptzBusy=false;renderPtz();}
+  }
+  for(const direction of ptzDirections)$('ptz'+direction[0].toUpperCase()+direction.slice(1)).onclick=()=>movePtz(direction);
+  $('ptzRead').onclick=readPtzCapabilities;
+  async function init(){try{homebridge.hideSchemaForm();try{const components=await request('/components');if(components.ready===false){$('components').classList.remove('hide');await pollComponentImport();}}catch{}configs=await homebridge.getPluginConfig();if(!Array.isArray(configs))configs=[];for(const key of ['enableAudio','enableTalkback','enableNightVision'])$(key).checked=configs[0]?.[key]!==false;$('enablePtzSwitches').checked=configs[0]?.enablePtzSwitches===true;$('enableTalkback').disabled=!$('enableAudio').checked;$('enableMatter').checked=configs[0]?.enableMatter===true;$('matterPort').value=String(Number.isInteger(configs[0]?.matterPort)?configs[0].matterPort:5540);$('matterInterface').value=typeof configs[0]?.matterInterface==='string'?configs[0].matterInterface:'eth0';const region=configs[0]?.region;if(regions.includes(region))$('region').value=region;if(!configs.length)$('bootstrap').classList.remove('hide');await status();try{const pending=await request('/auth/status');if(pending.state==='waiting'){loginId=pending.loginId;setLoginBusy(true);$('authState').textContent='先前的授权仍在等待确认。也可取消后生成新链接。';pollTimer=setTimeout(pollAuth,1000);}}catch{}statusTimer=setInterval(status,5000);clockTimer=setInterval(()=>{if(connected)renderRuntime();},1000);}catch(error){showError(error);}}
+  window.addEventListener('beforeunload',()=>{resetPtz();metadataGeneration++;clearMatterPairing();clearInterval(statusTimer);clearInterval(clockTimer);clearTimeout(pollTimer);clearTimeout(componentTimer);});
+  init();
+})();
+</script></body></html>

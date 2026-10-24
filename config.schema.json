@@ -1,0 +1,122 @@
+{
+  "pluginAlias": "MijiaRemoteCamera",
+  "pluginType": "platform",
+  "singular": true,
+  "customUi": true,
+  "customUiPath": "./homebridge-ui",
+  "headerDisplay": "首次先从已有本地运行包导入组件，再登录小米账号并选择家庭和摄像头。",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "title": "插件名称",
+        "default": "米家远程摄像头"
+      },
+      "platform": {
+        "type": "string",
+        "default": "MijiaRemoteCamera"
+      },
+      "region": {
+        "type": "string",
+        "title": "米家地区",
+        "default": "cn",
+        "enum": [
+          "cn",
+          "sg",
+          "de",
+          "us",
+          "ru",
+          "i2"
+        ]
+      },
+      "cameraName": {
+        "type": "string",
+        "title": "摄像头显示名称",
+        "default": "米家 3 Pro",
+        "maxLength": 64
+      },
+      "quality": {
+        "type": "integer",
+        "title": "米家画质",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 3
+      },
+      "maxWidth": {
+        "type": "integer",
+        "default": 640,
+        "minimum": 160,
+        "maximum": 1280,
+        "multipleOf": 2
+      },
+      "maxHeight": {
+        "type": "integer",
+        "default": 360,
+        "minimum": 120,
+        "maximum": 720,
+        "multipleOf": 2
+      },
+      "maxFPS": {
+        "type": "integer",
+        "default": 12,
+        "minimum": 1,
+        "maximum": 25
+      },
+      "maxBitrate": {
+        "type": "integer",
+        "default": 700,
+        "minimum": 100,
+        "maximum": 2000
+      },
+      "enableAudio": {
+        "type": "boolean",
+        "title": "收听摄像头声音",
+        "default": true
+      },
+      "enableTalkback": {
+        "type": "boolean",
+        "title": "启用双向对讲",
+        "default": true
+      },
+      "enableNightVision": {
+        "type": "boolean",
+        "title": "在家庭中显示夜视开关",
+        "default": true
+      },
+      "enablePtzSwitches": {
+        "type": "boolean",
+        "title": "在家庭中显示四个云台方向开关",
+        "default": false
+      },
+      "enableMatter": {
+        "type": "boolean",
+        "title": "启用 Matter 摄像头（开发设备）",
+        "default": false
+      },
+      "matterPort": {
+        "type": "integer",
+        "title": "Matter UDP 端口",
+        "default": 5540,
+        "minimum": 1024,
+        "maximum": 65535
+      },
+      "matterInterface": {
+        "type": "string",
+        "title": "Matter 局域网网卡",
+        "default": "eth0",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[A-Za-z0-9_.:-]+$"
+      },
+      "matterMaxStreams": {
+        "type": "integer",
+        "title": "Matter 同时播放窗口数",
+        "description": "默认两个窗口可同时播放；相同画质共享转码，关闭一个窗口不会中断另一个。最多四路；不同画质会增加 CPU 用量。",
+        "default": 2,
+        "minimum": 1,
+        "maximum": 4
+      }
+    }
+  }
+}
