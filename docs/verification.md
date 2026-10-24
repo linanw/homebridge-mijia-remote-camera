@@ -8,7 +8,7 @@ Reviewed against the [current official criteria](https://github.com/homebridge/p
 | --- | --- |
 | npm name | `@linanw/homebridge-mijia-remote-camera` |
 | Platform | Dynamic platform `MijiaRemoteCamera`; external native HAP camera; optional independently registered Matter camera |
-| Target release | 0.4.0; public npm and the GitHub release must match before requesting review |
+| Target release | 0.4.1; matching public npm and GitHub release required before submission |
 | Node.js | `^22.13.1 || ^24.0.0` |
 | Homebridge | `^1.11.4 || ^2.0.0`; current development dependency 2.4.0 |
 | OS / CPU | Linux x64 only; pinned local runtime contains glibc and musl variants |
@@ -23,7 +23,7 @@ The current criteria specify the supported Node LTS lines, currently 22 and 24. 
 | Official requirement | Implementation / review evidence |
 | --- | --- |
 | Dynamic platform and a distinct purpose | Registered platform with a single selected external camera; the comparison below explains the remote Xiaomi transport use case |
-| Public npm and GitHub source with Issues enabled | Public npm package and GitHub repository exist; the matching 0.4.0 source, npm release and GitHub release notes still need publication before submission |
+| Public npm and GitHub source with Issues enabled | Public source, Issues, npm 0.4.0 and its GitHub release exist; the 0.4.1 alias-import patch is the final review target |
 | Supported Node LTS, clean installation and no unconfigured startup | Node 22/24 public-source CI matrix; no platform instance or camera is created without configuration; clean tarball installation still needs final release verification |
 | No system-changing postinstall or TTY setup | No plugin lifecycle install scripts; local import and account setup are in Homebridge UI; CLI tools are optional |
 | Settings GUI | Schema plus protected custom settings page |
@@ -61,12 +61,14 @@ The final local full suite, with the held runtime and an independent Matter cont
 
 A local isolated source copy with no `assets/`, using Node 22.22.1 and Homebridge 2.4.0, ran the unfiltered `npm test`: **325 tests, 295 passed, 30 explicitly skipped, 0 failed**. It reused installed public dependencies, so it is not evidence of a fresh registry installation or of all six CI combinations. The four affected native-media/UI test files also ran with the held runtime: **40 passed, 0 skipped**; without assets the same subset reported **35 passed, 5 skipped**. No real account writes were performed by these tests.
 
-- [ ] Publish the reviewed source to the intended public GitHub repository, enable Issues, and verify all package URLs resolve.
+- [x] Publish the reviewed source to the intended public GitHub repository, enable Issues, and verify all package URLs resolve.
 - [x] Complete changed-value Chinese rename/restore and existing-room round-trip validation with independent reads, original values restored and credentials unchanged. Confirm exact readback rejects a cloud-normalized emoji result; run the final local suite on Node 22 and 24.
-- [ ] Run the public-source CI matrix and a clean packed-package install; inspect startup without configuration, stop/restart and network failure behavior.
-- [ ] Inspect the exact npm tarball and Git tree for credentials, imported assets, APK/DEX/decompiled code and third-party binaries. Only the project's own Java adapter JAR is intended for distribution.
-- [ ] Publish npm 0.4.0 and a matching GitHub release with release notes; ensure the default branch package version matches npm latest.
-- [ ] Refresh the production audit and official criteria/checker findings, then provide the limitations and comparison to the reviewers.
+- [x] Public [CI matrix](https://github.com/linanw/homebridge-mijia-remote-camera/actions/runs/40076414483) passed all six combinations for 0.4.0 plus test portability fixes. The final 0.4.1 patch must retain a passing matrix. Anonymous registry installation as a nonroot user succeeded, and unconfigured Homebridge loaded the plugin without creating its runtime.
+- [x] Inspect the exact npm tarball and Git tree for credentials, imported assets, APK/DEX/decompiled code and third-party binaries. Only the project's own Java adapter JAR is intended for distribution.
+- [ ] Publish npm 0.4.1 and a matching GitHub release with release notes; ensure the default branch package version matches npm latest.
+- [x] Refresh the production audit and official criteria/checker findings, then provide the limitations and comparison to the reviewers.
 - [ ] Submit the official verification request and address review feedback. Add a Verified badge only after the Homebridge team grants verification.
 
 The [official request form](https://github.com/homebridge/plugins/issues/new?template=1_verification-request.yml) requires the npm name, public repository and six Yes/No declarations. A roughly 100×100 PNG icon is optional and must respect licensing/trademarks. Include setup restrictions and test evidence in More Information. Use the [current template](https://github.com/homebridge/plugins/blob/latest/.github/ISSUE_TEMPLATE/1_verification-request.yml); repository transfer or a package scope change is not required for this request. The project team performs the review described in the [program documentation](https://github.com/homebridge/plugins#plugin-verification).
+
+The 0.4.1 patch accepts a Homebridge-configured storage-root symlink such as Synology's default alias, while still refusing user-selected symlink descendants, escapes and root-directory imports. Component import and repeat import through that alias are covered by independent fixtures. The protected settings UI and its name/room region were confirmed visible by the user on the real NAS; active custom-UI IPC returned current metadata and import readiness without errors.

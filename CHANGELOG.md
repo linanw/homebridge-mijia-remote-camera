@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-10-24
+
+- Accept the trusted Homebridge storage alias used by Synology Docker during GUI component import. User-selected descendants still reject symbolic links and directory escapes.
+- Verify GUI imports and immutable repeat imports through an aliased root, with legal notices preserved.
+- Make encrypted loopback CASE tests independent of multicast discovery and bound unreachable-peer cleanup.
+
 ## 0.4.0 — 2026-10-24
 
 - Add 60-second selected-camera metadata polling and manual refresh for the Mi Home name, home and room. Preserve accessory identity and active media during metadata updates.

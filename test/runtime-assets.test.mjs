@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { Header } from 'tar';
 import { spawnSync } from 'node:child_process';
-import { importRuntimeAssets, resolveRuntimeAssets, verifyRuntimeAssets } from '../lib/runtime-assets.mjs';
+import { importRuntimeAssets, resolveRuntimeAssets, resolveRuntimeImportSource, verifyRuntimeAssets } from '../lib/runtime-assets.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 async function fixture() {
@@ -40,6 +40,38 @@ function validEntries(value) {
   return [{ path: 'package/assets/manifest.json', content: value.manifest },
     ...Object.entries(value.files).map(([name, content]) => ({ path: `package/assets/${name}`, content }))];
 }
+
+test('trusted Homebridge storage aliases resolve ordinary sources while descendant links and escapes stay rejected', async t => {
+  const value = await fixture();
+  t.after(() => value.close());
+  await fs.mkdir(join(value.home, 'incoming'), { recursive: true });
+  const source = join(value.home, 'incoming/components.tgz');
+  await fs.writeFile(source, archive(validEntries(value)));
+  const alias = join(value.root, 'storage-alias');
+  await fs.symlink(value.home, alias, 'dir');
+  const request = selected => resolveRuntimeImportSource({ source: selected, homebridgeStoragePath: alias });
+  assert.equal(await request('incoming/components.tgz'), source);
+  assert.equal(await request(join(alias, 'incoming/components.tgz')), source);
+  assert.equal(await request('incoming'), join(value.home, 'incoming'));
+
+  const outside = join(value.root, 'outside.tgz');
+  await fs.writeFile(outside, 'unrelated-local-file');
+  await fs.symlink(source, join(value.home, 'internal.tgz'));
+  await fs.symlink(outside, join(value.home, 'external.tgz'));
+  await fs.symlink(join(value.home, 'incoming'), join(value.home, 'internal-directory'), 'dir');
+  await fs.symlink(value.root, join(value.home, 'external-directory'), 'dir');
+  const sibling = `${alias}-sibling`;
+  await fs.mkdir(sibling);
+  await fs.writeFile(join(sibling, 'components.tgz'), 'outside-root-prefix');
+  for (const selected of ['internal.tgz', 'external.tgz', 'internal-directory/components.tgz',
+    'external-directory/outside.tgz', '../outside.tgz', outside, join(sibling, 'components.tgz'), '.', alias]) {
+    await assert.rejects(request(selected), { reason: 'invalid_request' });
+  }
+  // Absolute inputs are interpreted against the configured logical root, not an alternate real path.
+  await assert.rejects(request(source), { reason: 'invalid_request' });
+  assert.equal(await fs.readFile(outside, 'utf8'), 'unrelated-local-file');
+  assert.equal(await request('incoming/components.tgz'), source);
+});
 
 test('local directory import verifies components and preserves executable modes', async () => {
   const value = await fixture();

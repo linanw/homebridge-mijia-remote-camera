@@ -74,6 +74,28 @@ test('relative and absolute storage paths work and immutable repeat imports are 
   assert.deepEqual(await settled(job), { state: 'complete', success: true, alreadyInstalled: true });
 });
 
+test('headless GUI import through a trusted storage alias retains the descendant boundary and local notices', async t => {
+  const value = await fixture(t);
+  await createArchive({ gzip: true, cwd: join(value.home, 'incoming'), prefix: 'package/', file: value.archive }, ['assets']);
+  const alias = join(value.root, 'homebridge-alias');
+  await fs.symlink(value.home, alias, 'dir');
+  const job = new RuntimeSetupJob({ homebridgeStoragePath: alias, importAssets: value.importAssets });
+  job.start({ source: 'local.tgz' });
+  assert.deepEqual(await settled(job), { state: 'complete', success: true, alreadyInstalled: false });
+  assert.equal(await fs.readFile(join(value.home, 'mijia-remote-camera/runtime/LICENSES/FFmpeg.txt'), 'utf8'), 'local-ffmpeg-license');
+  job.start({ source: join(alias, 'incoming/assets') });
+  assert.deepEqual(await settled(job), { state: 'complete', success: true, alreadyInstalled: true });
+
+  await fs.symlink(value.archive, join(value.home, 'linked.tgz'));
+  await fs.symlink(join(value.home, 'incoming'), join(value.home, 'linked-directory'), 'dir');
+  for (const source of ['linked.tgz', 'linked-directory/assets', '../outside.tgz']) {
+    job.start({ source });
+    assert.deepEqual(await settled(job), { state: 'error', success: false, reason: 'invalid_request' });
+  }
+  assert.equal(JSON.stringify(job.safeStatus()).includes(value.root), false);
+  assert.equal(await fs.readFile(join(value.home, 'mijia-remote-camera/runtime/micam.jar'), 'utf8'), 'local-micam');
+});
+
 test('fixed production manifest rejects locally supplied replacement manifests', async t => {
   const value = await fixture(t);
   const job = new RuntimeSetupJob({ homebridgeStoragePath: value.home });
