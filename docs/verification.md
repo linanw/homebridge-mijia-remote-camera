@@ -1,6 +1,6 @@
-# Homebridge verification preparation
+# Homebridge verification status and evidence
 
-Reviewed against the [current official criteria](https://github.com/homebridge/plugins/wiki/Verified-Plugins) on 2026-10-24. **This plugin has not been verified by the Homebridge team.** This document records preparation and remaining review points; it is not an approval or a guarantee that the request will be accepted.
+Reviewed against the [current official criteria](https://github.com/homebridge/plugins/wiki/Verified-Plugins) on 2026-10-24. Release **0.4.1** is public on [npm](https://www.npmjs.com/package/@linanw/homebridge-mijia-remote-camera), with matching [GitHub source and release](https://github.com/linanw/homebridge-mijia-remote-camera/releases/tag/v0.4.1). [Verification request #1296](https://github.com/homebridge/plugins/issues/1296) has been submitted and is open with `pending` / `request-verification` labels. **The Homebridge team has not granted verification.** The project's own checks and CI do not constitute approval, and no Verified badge is displayed.
 
 ## Compatibility and distribution
 
@@ -8,7 +8,7 @@ Reviewed against the [current official criteria](https://github.com/homebridge/p
 | --- | --- |
 | npm name | `@linanw/homebridge-mijia-remote-camera` |
 | Platform | Dynamic platform `MijiaRemoteCamera`; external native HAP camera; optional independently registered Matter camera |
-| Target release | 0.4.1; matching public npm and GitHub release required before submission |
+| Review release | Public npm and matching GitHub release 0.4.1; code commit `b0fcb441872d5fd38e6035b18a3967c9e7c49421` |
 | Node.js | `^22.13.1 || ^24.0.0` |
 | Homebridge | `^1.11.4 || ^2.0.0`; current development dependency 2.4.0 |
 | OS / CPU | Linux x64 only; pinned local runtime contains glibc and musl variants |
@@ -23,8 +23,8 @@ The current criteria specify the supported Node LTS lines, currently 22 and 24. 
 | Official requirement | Implementation / review evidence |
 | --- | --- |
 | Dynamic platform and a distinct purpose | Registered platform with a single selected external camera; the comparison below explains the remote Xiaomi transport use case |
-| Public npm and GitHub source with Issues enabled | Public source, Issues, npm 0.4.0 and its GitHub release exist; the 0.4.1 alias-import patch is the final review target |
-| Supported Node LTS, clean installation and no unconfigured startup | Node 22/24 public-source CI matrix; no platform instance or camera is created without configuration; clean tarball installation still needs final release verification |
+| Public npm and GitHub source with Issues enabled | Public source and Issues are available; npm 0.4.1 and the matching GitHub release are published |
+| Supported Node LTS, clean installation and no unconfigured startup | All six public CI combinations passed; anonymous fresh nonroot installation of npm 0.4.1 and unconfigured Homebridge startup passed without creating the plugin runtime, account session or camera |
 | No system-changing postinstall or TTY setup | No plugin lifecycle install scripts; local import and account setup are in Homebridge UI; CLI tools are optional |
 | Settings GUI | Schema plus protected custom settings page |
 | No analytics or tracking | No author-operated analytics service; Xiaomi account, cloud metadata and remote-camera services are necessary network dependencies |
@@ -45,6 +45,8 @@ The comparison uses the [official verified list](https://github.com/homebridge/p
 
 A related [homebridge-xiaomi-go2rtc project](https://github.com/moguennouni/homebridge-xiaomi-go2rtc) now documents local Xiaomi camera streaming and controls, automatic go2rtc provisioning and broader server architectures. It was not present in the official verified list checked for this preparation. Its overlapping functionality must still be disclosed; acceptance of a distinct use case is the Homebridge team's decision.
 
+Another related project, [homebridge-xiaomi-camera-native](https://github.com/Kosztyk/homebridge-xiaomi-camera-native), has an open [verification request #1289](https://github.com/homebridge/plugins/issues/1289), marked `awaiting-final-review` on 2026-10-24. It was not in the official verified list checked on that date. Its [README](https://github.com/Kosztyk/homebridge-xiaomi-camera-native/blob/main/README.md) describes direct LAN MISS/CS2 video, snapshots and pan/tilt, requires LAN access to the camera, and explicitly excludes audio and two-way talk. This plugin's validated remote transport, camera audio/talkback and Mi Home/Matter metadata are relevant differences. Both the existing overlap and the pending application should be considered by the reviewers; no general feature-superset or replacement claim is made.
+
 ## Scope that must remain explicit
 
 - The npm package excludes micam, its native components, JRE and FFmpeg. The known local backend repository has no license, and the known FFmpeg build enables `nonfree`. No redistribution rights are asserted. See [third-party notices](../THIRD_PARTY_NOTICES.md).
@@ -53,21 +55,22 @@ A related [homebridge-xiaomi-go2rtc project](https://github.com/moguennouni/home
 - Apple Home's own name and room edits are not written back to Mi Home. Matter metadata uses a vendor interface and a 160-byte UTF-8 bound; controllers must explicitly support it. Neither of these features is a universal HomeKit/Matter room sync promise.
 - Matter remains an experimental development device using SDK test attestation. Homebridge verification, if granted, would not confer Matter product certification.
 
-## Validation and release checklist
+## Validation and release status
 
-The CI workflow tests public-source behavior with Node 22.13.1, the current 22.x and 24.x releases against Homebridge 1.11.4 and 2.4.0. It runs `npm test` without proprietary runtime assets; codec-dependent HomeKit media and the full-runtime UI IPC fixture explicitly report skipped tests when their required components are absent. Java/vendor protocol fixtures and real AAC-ELD/media checks require the separately held components; execute those locally and report their results separately. The workflow must actually pass on the public repository before describing CI as passed.
+The [0.4.1 public CI run](https://github.com/linanw/homebridge-mijia-remote-camera/actions/runs/40076759349), for code commit `b0fcb441872d5fd38e6035b18a3967c9e7c49421`, passed all six combinations of Node 22.13.1 / current 22.x / 24.x and Homebridge 1.11.4 / 2.4.0. It installs public dependencies and runs unfiltered `npm test` without proprietary runtime assets. Codec-dependent HomeKit media, Java/vendor protocol fixtures and the full-runtime UI IPC fixture explicitly skip when their required components are absent. Public CI therefore does not replace the separately reported full-runtime and real-device validation.
 
-The final local full suite, with the held runtime and an independent Matter controller integration, passed on **Node 22.22.1 and Node 24.19.0 / Homebridge 2.4.0: 325 tests, 324 passed, 1 root-only ownership test skipped, 0 failed on each Node version**. Real-account validation changed a Chinese camera name and restored it, moved the camera between two existing rooms of its owned home and restored the original room, and independently read back each result. The original name/room and credentials were preserved at completion. An emoji-containing target was normalized by the cloud, correctly returned `metadata_not_applied`, and was restored; the plugin does not promise arbitrary cloud name characters or automatic rollback.
+The final 0.4.1 local full suite, with the held runtime and an independent Matter controller integration, passed on **Node 22.22.1 and Node 24.19.0 / Homebridge 2.4.0: 328 tests, 327 passed, 1 root-only ownership test skipped, 0 failed on each Node version**. Real-account validation changed a Chinese camera name and restored it, moved the camera between two existing rooms of its owned home and restored the original room, and independently read back each result. The original name/room and credentials were preserved at completion. An emoji-containing target was normalized by the cloud, correctly returned `metadata_not_applied`, and was restored; the plugin does not promise arbitrary cloud name characters or automatic rollback.
 
-A local isolated source copy with no `assets/`, using Node 22.22.1 and Homebridge 2.4.0, ran the unfiltered `npm test`: **325 tests, 295 passed, 30 explicitly skipped, 0 failed**. It reused installed public dependencies, so it is not evidence of a fresh registry installation or of all six CI combinations. The four affected native-media/UI test files also ran with the held runtime: **40 passed, 0 skipped**; without assets the same subset reported **35 passed, 5 skipped**. No real account writes were performed by these tests.
+Anonymous installation of **0.4.1** from the public npm registry into a fresh nonroot environment passed with lifecycle scripts disabled. Unconfigured Homebridge loaded the plugin and started normally without creating the plugin runtime, account session or camera. The public tarball contains no vendor runtime assets, and its production dependency audit reported **0 vulnerabilities**. These installation checks do not establish working video for users without the matching local components.
 
 - [x] Publish the reviewed source to the intended public GitHub repository, enable Issues, and verify all package URLs resolve.
 - [x] Complete changed-value Chinese rename/restore and existing-room round-trip validation with independent reads, original values restored and credentials unchanged. Confirm exact readback rejects a cloud-normalized emoji result; run the final local suite on Node 22 and 24.
-- [x] Public [CI matrix](https://github.com/linanw/homebridge-mijia-remote-camera/actions/runs/40076414483) passed all six combinations for 0.4.0 plus test portability fixes. The final 0.4.1 patch must retain a passing matrix. Anonymous registry installation as a nonroot user succeeded, and unconfigured Homebridge loaded the plugin without creating its runtime.
+- [x] Public [0.4.1 CI matrix](https://github.com/linanw/homebridge-mijia-remote-camera/actions/runs/40076759349) passed all six combinations. Anonymous fresh nonroot registry installation and unconfigured Homebridge startup passed.
 - [x] Inspect the exact npm tarball and Git tree for credentials, imported assets, APK/DEX/decompiled code and third-party binaries. Only the project's own Java adapter JAR is intended for distribution.
-- [ ] Publish npm 0.4.1 and a matching GitHub release with release notes; ensure the default branch package version matches npm latest.
+- [x] Publish npm 0.4.1 and a matching GitHub release with release notes; verify the default-branch package version matches npm latest.
 - [x] Refresh the production audit and official criteria/checker findings, then provide the limitations and comparison to the reviewers.
-- [ ] Submit the official verification request and address review feedback. Add a Verified badge only after the Homebridge team grants verification.
+- [x] Submit [verification request #1296](https://github.com/homebridge/plugins/issues/1296) for 0.4.1; it is awaiting official review.
+- [ ] Address official review feedback and await the Homebridge team's decision. Add a Verified badge only if verification is granted.
 
 The [official request form](https://github.com/homebridge/plugins/issues/new?template=1_verification-request.yml) requires the npm name, public repository and six Yes/No declarations. A roughly 100×100 PNG icon is optional and must respect licensing/trademarks. Include setup restrictions and test evidence in More Information. Use the [current template](https://github.com/homebridge/plugins/blob/latest/.github/ISSUE_TEMPLATE/1_verification-request.yml); repository transfer or a package scope change is not required for this request. The project team performs the review described in the [program documentation](https://github.com/homebridge/plugins#plugin-verification).
 

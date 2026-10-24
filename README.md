@@ -8,7 +8,7 @@
 
 要求 **Linux x86_64、Node.js 22.13.1+（22.x）或 24.x、Homebridge 1.11.4+（1.x）或 2.x**，以及支持自定义插件设置页的 Homebridge UI。适用 Synology DS1618+ 上以 host 网络运行的 Homebridge Docker。运行组件提供 glibc 和 musl 版本；ARM、macOS 和 Windows 不支持。
 
-这是独立开发的插件，与小米、Apple 和 Homebridge 项目没有隶属关系。当前尚未获得 Homebridge Verified 或 Matter 认证。
+这是独立开发的插件，与小米、Apple 和 Homebridge 项目没有隶属关系。[0.4.1](https://github.com/linanw/homebridge-mijia-remote-camera/releases/tag/v0.4.1) 已公开发布；Homebridge 认证申请 [#1296](https://github.com/homebridge/plugins/issues/1296) 已提交，正在等待官方审核。当前尚未获得 Homebridge Verified 或 Matter 认证。
 
 ## 安装和首次导入
 
@@ -16,7 +16,7 @@
 
 1. 在 Homebridge UI 的“插件”页搜索完整包名 `@linanw/homebridge-mijia-remote-camera` 并安装。迁移时先停用此前连接同一摄像头的 viewer／relay 或旧插件，避免重复占用运行目录。
 2. 将你已持有的 `homebridge-mijia-remote-camera-0.1.0.tgz` 放入 **Homebridge 持久化存储目录**，容器内通常为 `/homebridge`。也支持放在该目录内的匹配版本 `assets` 目录。插件不会提供或下载这些组件。
-3. 打开插件设置页的“导入已有的运行包”，填写存储目录内的相对路径，例如 `homebridge-mijia-remote-camera-0.1.0.tgz`，点击“导入并校验组件”，等待结果。此过程无需终端，也无需让 Homebridge 在 TTY 中启动。绝对路径也必须位于同一存储目录内；越界路径、符号链接与不匹配的组件会被拒绝。
+3. 打开插件设置页的“导入已有的运行包”，填写存储目录内的相对路径，例如 `homebridge-mijia-remote-camera-0.1.0.tgz`，点击“导入并校验组件”，等待结果。此过程无需终端，也无需让 Homebridge 在 TTY 中启动。绝对路径也必须位于同一配置存储目录内；Homebridge 指定的根目录可以是别名链接，但用户选择的子路径中的符号链接、越界路径与不匹配的组件会被拒绝。
 4. 点击“启用并保存配置”，按界面提示从 Homebridge 首页重新启动，再回到设置页登录。
 
 导入只读取运行文件、核验固定 SHA-256，并保留组件的 legal 目录；目标为 `<Homebridge storage>/mijia-remote-camera/runtime`。它不导入旧包的插件代码、凭据或配置。已有有效组件会保留；目录正被运行中的插件占用时返回 `runtime_in_use`。此时先停用平台并正常重启，待旧进程退出后再导入。损坏的已有目录也不会被覆盖，请先备份后处理。
@@ -129,7 +129,9 @@ Matter 信令及 WebRTC 播放目前面向同一局域网，无外部 STUN／TUR
 
 0.4.0 在所选自有家庭完成真实云端往返：中文临时名称写入、独立读取并恢复原名；移到同家庭另一个现有房间、独立读取并恢复原房间。最终名称／房间和原凭据均保持原值。云端去除 emoji 的案例未被误报为确认成功。该验证不覆盖所有名称字符、家庭权限或摄像头型号。
 
-2026-10-24 的完整本地测试在 Node 22.22.1 和 Node 24.19.0、Homebridge 2.4.0 下分别为 325 项：324 通过、1 项仅 root 用户适用的所有权测试跳过、0 失败；包含私有组件和独立 Matter 控制器集成。无私有组件的公开源码测试另见 [验证记录](docs/verification.md)，两者不能互相替代。
+2026-10-24，0.4.1 的完整本地测试在 Node 22.22.1 和 Node 24.19.0、Homebridge 2.4.0 下分别为 328 项：327 通过、1 项仅 root 用户适用的所有权测试跳过、0 失败；包含已持有的运行组件和独立 Matter 控制器集成。[公开 CI](https://github.com/linanw/homebridge-mijia-remote-camera/actions/runs/40076759349) 的 Node 22.13.1／22.x／24.x × Homebridge 1.11.4／2.4.0 六个组合全部通过；公开 CI 不含私有组件，依赖这些组件的测试会明确跳过。
+
+0.4.1 已通过从公开 npm 匿名全新安装到非 root 用户环境、无平台配置启动 Homebridge 和生产依赖审计（0 个漏洞）。这些检查不表示新用户无需本地运行组件即可播放视频。详细验证范围见 [验证记录](docs/verification.md)。
 
 远程中继仍可能间歇断开并自动重连，重连期间预览和直播可能暂不可用。目前尚未完成长时间稳定性验证。
 
@@ -145,4 +147,6 @@ mijia-camera-diagnose --storage /var/lib/homebridge
 
 能在插件中收到视频、但 Apple“家庭”添加失败时，请检查摄像头日志中的独立 HomeKit 端口及 Setup Code；摄像头端口与主桥／子桥端口不同。
 
-公开仓库与认证准备、兼容性矩阵及已知限制见 [verification.md](docs/verification.md)，组件权利说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+相关的 [homebridge-xiaomi-camera-native](https://github.com/Kosztyk/homebridge-xiaomi-camera-native) 已提出认证申请 [#1289](https://github.com/homebridge/plugins/issues/1289)，截至 2026-10-24 尚待最终审核。它的 README 描述直接局域网 MISS/CS2 视频、快照与云台，不含音频／双向对讲。本插件针对已验证的跨网络摄像头传输、音频／对讲和米家／Matter 资料接口；存在功能重叠，不代表整体功能优于其他项目。
+
+公开发布与认证审核状态、兼容性矩阵、同类项目对照及已知限制见 [verification.md](docs/verification.md)，组件权利说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
