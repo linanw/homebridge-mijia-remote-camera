@@ -5,8 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
-import { ControllerBehavior, Environment, MemoryBlobStorageDriver, MemoryStorageDriver, ServerNode, StorageService } from '@matter/main';
-import { NodeJsNetwork } from '@matter/nodejs';
+import { createCaseController, installCaseLoopback } from './helpers/matter-case-loopback.mjs';
 import { Invoke, Read, Write } from '@matter/main/protocol';
 import { Status } from '@matter/main/types';
 import { BasicInformation } from '@matter/main/clusters/basic-information';
@@ -20,18 +19,10 @@ async function freePort() {
 }
 
 // Real PASE, CASE and encrypted TLV on loopback, synthetic Xiaomi metadata only.
-test('camera metadata cluster publishes typed snapshots and guarded explicit commands over CASE', { timeout: 30000 }, async () => {
+test('camera metadata cluster publishes typed snapshots and guarded explicit commands over CASE', { timeout: 30000 }, async t => {
   const dir = await mkdtemp(path.join(tmpdir(), 'mijia-meta-case-'));
-  const getIpMac = NodeJsNetwork.prototype.getIpMac, getNetInterfaces = NodeJsNetwork.prototype.getNetInterfaces;
-  const connectTcp = NodeJsNetwork.prototype.connectTcp;
-  NodeJsNetwork.prototype.getIpMac = function (name) {
-    const result = getIpMac.call(this, name);
-    return result && name === 'lo' ? { ...result, mac: '02:00:00:00:00:01', ipV6: [] } : result;
-  };
-  NodeJsNetwork.prototype.getNetInterfaces = () => [{ name: 'lo', type: 2 }];
-  NodeJsNetwork.prototype.connectTcp = function (host, port, options) {
-    return connectTcp.call(this, /^fe[89ab][0-9a-f]*:.*%lo$/i.test(host) ? '::1' : host, port, options);
-  };
+  const port = await freePort();
+  const loopback = installCaseLoopback({ port, signal: t.signal });
   let camera, controller, peer, mutations = 0, refreshes = 0;
   const selected = { deviceId: '803', homeId: '202', homeOwner: '123', region: 'cn' };
   const identity = createHash('sha256').update(selected.deviceId).digest('hex');
@@ -50,26 +41,18 @@ test('camera metadata cluster publishes typed snapshots and guarded explicit com
       return { ...structuredClone(status.metadata), confirmed: true };
     } };
   try {
-    const port = await freePort();
     camera = await createMatterDevice({ storagePath: dir, name: 'Synthetic metadata', serialNumber: 'metadata-case',
       networkInterface: 'lo', port, runtime, media: { async createSession() {}, async closeSession() {}, setMicrophoneMuted() {}, setMicrophoneVolume() {} },
       config: { listeningAddressIpv4: '127.0.0.1', listeningAddressIpv6: '::1' } });
     await camera.start();
-    const env = new Environment('metadata-controller', Environment.default);
-    env.vars.set('mdns.networkInterface', 'lo');
-    const storage = new StorageService(env);
-    storage.registerDriver(MemoryStorageDriver); storage.defaultDriver = 'memory';
-    storage.registerBlobDriver(MemoryBlobStorageDriver); storage.defaultBlobDriver = 'memory-blob';
-    controller = await ServerNode.create(ServerNode.RootEndpoint.with(ControllerBehavior), {
-      id: 'metadata-controller', environment: env, network: { port: 0, ble: false, listeningAddressIpv4: '127.0.0.1', listeningAddressIpv6: '::1' },
-      controller: { adminFabricLabel: 'Isolated metadata test' }, commissioning: { enabled: false },
-    });
+    controller = await createCaseController('metadata-controller');
+    loopback.attach(controller);
     await controller.start();
     peer = await controller.peers.forDescriptor({ addresses: [{ type: 'udp', ip: '127.0.0.1', port }] });
-    await peer.commission({ pairingCode: camera.pairing().manualPairingCode, autoSubscribe: false, autoStateInitialize: false, onAttestationFailure: true });
+    await peer.commission({ ...loopback.commissionOptions, pairingCode: camera.pairing().manualPairingCode, autoSubscribe: false, autoStateInitialize: false, onAttestationFailure: true });
     async function read() {
       const result = {};
-      for await (const chunk of peer.interaction.read({ ...Read(Read.Attribute({ endpoint: 1, cluster: MijiaMetadata })), includeKnownVersions: true })) {
+      for await (const chunk of peer.interaction.read({ ...Read(Read.Attribute({ endpoint: 1, cluster: MijiaMetadata })), includeKnownVersions: true, abort: loopback.signal })) {
         for await (const item of chunk) if (item.kind === 'attr-value') result[item.path.attributeId] = item.value;
       }
       return result;
@@ -77,16 +60,18 @@ test('camera metadata cluster publishes typed snapshots and guarded explicit com
     async function invoke(command, extra = {}) {
       const request = Invoke({ endpoint: 1, cluster: MijiaMetadata, command, fields: {
         expectedIdentity: identity, expectedSourceEpoch: sourceEpoch, expectedRevision: status.revision, ...extra } });
-      request.batchDuration = false;
+      request.batchDuration = false; request.abort = loopback.signal;
       for await (const chunk of peer.interaction.invoke(request)) for (const item of chunk) if (item.kind === 'cmd-status') return item.status;
       assert.fail('No metadata status');
     }
     async function nodeLabel() {
       for await (const chunk of peer.interaction.read({ ...Read(Read.Attribute({ endpoint: 0, cluster: BasicInformation,
-        attributes: ['nodeLabel'] })), includeKnownVersions: true })) {
+        attributes: ['nodeLabel'] })), includeKnownVersions: true, abort: loopback.signal })) {
         for await (const item of chunk) if (item.kind === 'attr-value') return item.value;
       }
     }
+    assert.ok(loopback.counters.operationalPeers > 0);
+    await loopback.reconnect();
     const initial = await read();
     assert.equal(initial[0][0], identity); assert.equal(initial[0][1], sourceEpoch);
     assert.equal(initial[0][3], '云端摄像头'); assert.equal(initial[0][7], '客厅');
@@ -100,15 +85,15 @@ test('camera metadata cluster publishes typed snapshots and guarded explicit com
     assert.equal((await read())[1].length, 122, 'room lists survive actual interaction-model report chunking');
     status.metadata.rooms = originalRooms; await camera.refreshMetadataState();
     assert.equal(JSON.stringify(initial).includes(`"${selected.deviceId}"`), false);
-    const denied = await peer.interaction.write(Write(Write.Attribute({ endpoint: 1, cluster: MijiaMetadata,
-      attributes: 'snapshot', value: new MatterMetadataControl({ runtime }).state().snapshot })));
+    const denied = await peer.interaction.write({ ...Write(Write.Attribute({ endpoint: 1, cluster: MijiaMetadata,
+      attributes: 'snapshot', value: new MatterMetadataControl({ runtime }).state().snapshot })), abort: loopback.signal });
     assert.equal(denied[0].status, Status.UnsupportedWrite);
     assert.equal(await invoke('refreshMetadata'), Status.Success); assert.equal(refreshes, 1);
     assert.equal(await invoke('renameDevice', { name: '不应写回' }), Status.InvalidInState); assert.equal(mutations, 0);
     assert.equal(await invoke('setSyncEnabled', { enabled: false }), Status.Success);
     assert.equal((await read())[3], false);
     // A standard root NodeLabel write is local Matter state and has no cloud-write handler.
-    const label = await peer.interaction.write(Write(Write.Attribute({ endpoint: 0, cluster: BasicInformation, attributes: 'nodeLabel', value: 'Controller alias' })));
+    const label = await peer.interaction.write({ ...Write(Write.Attribute({ endpoint: 0, cluster: BasicInformation, attributes: 'nodeLabel', value: 'Controller alias' })), abort: loopback.signal });
     assert.equal(label[0].status, Status.Success); assert.equal(mutations, 0);
     status.capabilities.rename = status.capabilities.move = true;
     await camera.refreshMetadataState();
@@ -121,11 +106,10 @@ test('camera metadata cluster publishes typed snapshots and guarded explicit com
     assert.equal(await nodeLabel(), '已确认新名', 'reenabling sync applies the existing confirmed cloud snapshot');
     assert.equal(await invoke('refreshMetadata', { expectedSourceEpoch: randomUUID() }), Status.InvalidInState);
     assert.equal(refreshes, 1);
+    assert.ok(loopback.counters.mdnsSuppressed > 0, 'mDNS is unavailable throughout this real CASE test');
+    assert.ok(loopback.counters.unicastSent > 0);
   } finally {
-    try { await peer?.decommission(); } catch {}
-    await controller?.close(); await camera?.close();
-    NodeJsNetwork.prototype.getIpMac = getIpMac; NodeJsNetwork.prototype.getNetInterfaces = getNetInterfaces;
-    NodeJsNetwork.prototype.connectTcp = connectTcp;
+    await loopback.close(camera);
     await rm(dir, { recursive: true, force: true });
   }
 });

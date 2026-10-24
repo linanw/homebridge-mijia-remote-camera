@@ -4,9 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:net';
-import { ControllerBehavior, Environment, MemoryBlobStorageDriver, MemoryStorageDriver, ServerNode,
-  StorageService } from '@matter/main';
-import { NodeJsNetwork } from '@matter/nodejs';
+import { createCaseController, installCaseLoopback } from './helpers/matter-case-loopback.mjs';
 import { Invoke, Read, Write } from '@matter/main/protocol';
 import { Status } from '@matter/main/types';
 import { Descriptor } from '@matter/main/clusters/descriptor';
@@ -28,18 +26,10 @@ async function freePort() {
 
 // Uses real PASE, CASE, encrypted interaction requests and TLV, only on loopback.
 // The backend is synthetic; this test never moves a real camera or contacts an existing fabric.
-test('vendor direction steps are discovered and invoked over real commissioned CASE', { timeout: 30000 }, async () => {
+test('vendor direction steps are discovered and invoked over real commissioned CASE', { timeout: 30000 }, async t => {
   const dir = await mkdtemp(path.join(tmpdir(), 'mijia-step-case-'));
-  const getIpMac = NodeJsNetwork.prototype.getIpMac, getNetInterfaces = NodeJsNetwork.prototype.getNetInterfaces;
-  const connectTcp = NodeJsNetwork.prototype.connectTcp;
-  NodeJsNetwork.prototype.getIpMac = function (name) {
-    const result = getIpMac.call(this, name);
-    return result && name === 'lo' ? { ...result, mac: '02:00:00:00:00:01', ipV6: [] } : result;
-  };
-  NodeJsNetwork.prototype.getNetInterfaces = () => [{ name: 'lo', type: 2 }];
-  NodeJsNetwork.prototype.connectTcp = function (host, port, options) {
-    return connectTcp.call(this, /^fe[89ab][0-9a-f]*:.*%lo$/i.test(host) ? '::1' : host, port, options);
-  };
+  const port = await freePort();
+  const loopback = installCaseLoopback({ port, signal: t.signal });
   let camera, controller, peer;
   let caps = { supported: false, available: false, relativeStep: true, directions: ['up', 'down', 'left', 'right'] };
   let rejectBackend = false, hold;
@@ -50,29 +40,20 @@ test('vendor direction steps are discovered and invoked over real commissioned C
     return { accepted: true };
   } };
   try {
-    const port = await freePort();
     camera = await createMatterDevice({ storagePath: dir, name: 'Synthetic direction QA', serialNumber: 'step-case',
       networkInterface: 'lo', port, runtime,
       media: { async createSession() {}, async closeSession() {}, setMicrophoneMuted() {}, setMicrophoneVolume() {} },
       config: { listeningAddressIpv4: '127.0.0.1', listeningAddressIpv6: '::1' } });
     await camera.start();
-    const env = new Environment('step-controller', Environment.default);
-    env.vars.set('mdns.networkInterface', 'lo');
-    const storage = new StorageService(env);
-    storage.registerDriver(MemoryStorageDriver); storage.defaultDriver = 'memory';
-    storage.registerBlobDriver(MemoryBlobStorageDriver); storage.defaultBlobDriver = 'memory-blob';
-    controller = await ServerNode.create(ServerNode.RootEndpoint.with(ControllerBehavior), {
-      id: 'step-controller', environment: env,
-      network: { port: 0, ble: false, listeningAddressIpv4: '127.0.0.1', listeningAddressIpv6: '::1' },
-      controller: { adminFabricLabel: 'Isolated direction test' }, commissioning: { enabled: false },
-    });
+    controller = await createCaseController('step-controller');
+    loopback.attach(controller);
     await controller.start();
     peer = await controller.peers.forDescriptor({ addresses: [{ type: 'udp', ip: '127.0.0.1', port }] });
-    await peer.commission({ pairingCode: camera.pairing().manualPairingCode,
+    await peer.commission({ ...loopback.commissionOptions, pairingCode: camera.pairing().manualPairingCode,
       autoSubscribe: false, autoStateInitialize: false, onAttestationFailure: true });
     async function read() {
       const result = {};
-      const request = { ...Read(Read.Attribute({ endpoint: 1, cluster: MijiaPtzStep })), includeKnownVersions: true };
+      const request = { ...Read(Read.Attribute({ endpoint: 1, cluster: MijiaPtzStep })), includeKnownVersions: true, abort: loopback.signal };
       for await (const chunk of peer.interaction.read(request)) {
         for await (const item of chunk) {
           if (item.kind === 'attr-value') result[item.path.attributeId] = item.value;
@@ -84,25 +65,27 @@ test('vendor direction steps are discovered and invoked over real commissioned C
     async function invoke(direction) {
       const request = Invoke({ endpoint: 1, cluster: MijiaPtzStep, command: 'moveStep', fields: { direction } });
       // This client metadata is set on the built request; Invoke.Definition does not copy it.
-      request.batchDuration = false;
+      request.batchDuration = false; request.abort = loopback.signal;
       for await (const chunk of peer.interaction.invoke(request)) {
         for (const item of chunk) if (item.kind === 'cmd-status') return item.status;
       }
       assert.fail('No IM status received');
     }
+    assert.ok(loopback.counters.operationalPeers > 0);
+    await loopback.reconnect();
     const initial = await read();
     assert.equal(initial[0], false); assert.equal(initial[1], false); assert.equal(initial[2], 0); assert.equal(initial[3], 0);
     assert.ok(initial[0xfffb].includes(3), 'vendor attributes are published');
     assert.ok(initial[0xfff9].includes(0), 'MoveStep is in AcceptedCommandList');
     let serverList;
     for await (const chunk of peer.interaction.read({ ...Read(Read.Attribute({ endpoint: 1, cluster: Descriptor,
-      attributes: ['serverList'] })), includeKnownVersions: true })) {
+      attributes: ['serverList'] })), includeKnownVersions: true, abort: loopback.signal })) {
       for await (const item of chunk) if (item.kind === 'attr-value') serverList = item.value;
     }
     assert.ok(serverList.includes(MIJIA_PTZ_STEP_CLUSTER_ID));
     assert.equal(serverList.includes(0x0552), false, 'direction steps must not claim standard mechanical PTZ');
-    const writeStatus = await peer.interaction.write(Write(Write.Attribute({ endpoint: 1,
-      cluster: MijiaPtzStep, attributes: 'supported', value: true })));
+    const writeStatus = await peer.interaction.write({ ...Write(Write.Attribute({ endpoint: 1,
+      cluster: MijiaPtzStep, attributes: 'supported', value: true })), abort: loopback.signal });
     assert.equal(writeStatus[0].status, Status.UnsupportedWrite);
     assert.equal(await invoke(0), Status.InvalidInState); assert.equal(moves.length, 0);
     caps = { ...caps, supported: true, available: true };
@@ -128,13 +111,11 @@ test('vendor direction steps are discovered and invoked over real commissioned C
     await camera.refreshPtzCapabilities();
     assert.equal(await invoke(0), Status.InvalidInState); assert.equal(moves.length, 6);
     assert.equal(MIJIA_PTZ_STEP_CLUSTER_ID, 4294048769);
+    assert.ok(loopback.counters.mdnsSuppressed > 0, 'mDNS is unavailable throughout this real CASE test');
+    assert.ok(loopback.counters.unicastSent > 0);
   } finally {
     hold?.accept.resolve();
-    try { await peer?.decommission(); } catch {}
-    await controller?.close(); await camera?.close();
-    NodeJsNetwork.prototype.getIpMac = getIpMac;
-    NodeJsNetwork.prototype.getNetInterfaces = getNetInterfaces;
-    NodeJsNetwork.prototype.connectTcp = connectTcp;
+    await loopback.close(camera);
     await rm(dir, { recursive: true, force: true });
   }
 });
