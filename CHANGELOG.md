@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 — 2026-10-24
+
+- Name the existing HomeKit night-vision control 手动夜视 and add 自动夜视, with distinct `Name` and `ConfiguredName` values and the original service identity preserved.
+- Reflect manual, automatic and off policies as two mutually exclusive switches. Serialize fresh mode checks and conditional changes with other camera-control requests, so an already-off switch does not disable the other mode.
+- Synchronize both controls from confirmed Xiaomi/UI/Matter mode observations and prevent an older in-flight read from overwriting a newer observed mode.
+
 ## 0.4.2 — 2026-10-24
 
 - Publish explicit HomeKit `ConfiguredName` values for the four camera direction switches: 云台向上, 云台向下, 云台向左 and 云台向右.

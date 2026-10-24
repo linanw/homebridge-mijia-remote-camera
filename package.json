@@ -1,7 +1,7 @@
 {
   "name": "@linanw/homebridge-mijia-remote-camera",
   "displayName": "米家远程摄像头",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Xiaomi remote camera plugin with HomeKit, experimental Matter streaming and Mi Home name/room sync",
   "license": "MIT",
   "author": "linanw",

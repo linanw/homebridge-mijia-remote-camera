@@ -81,7 +81,7 @@
       },
       "enableNightVision": {
         "type": "boolean",
-        "title": "在家庭中显示夜视开关",
+        "title": "在家庭中显示手动／自动夜视开关",
         "default": true
       },
       "enablePtzSwitches": {

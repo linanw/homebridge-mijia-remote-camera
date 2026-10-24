@@ -45,10 +45,10 @@
   <section><div class="step">03 · 声音与夜视</div><h2>摄像头功能</h2>
     <label for="nightMode">夜视模式</label><select id="nightMode" disabled><option value="auto">自动</option><option value="on">开启</option><option value="off">关闭</option></select>
     <div class="row"><button id="nightRead" class="secondary">读取夜视状态</button><button id="nightSave" disabled>应用夜视模式</button></div><p id="nightState" class="small" aria-live="polite" style="margin-top:12px">读取摄像头实际模式后可修改。</p>
-    <p class="small">Apple“家庭”中的夜视开关表示允许夜视；自动模式显示为开。关闭后再次打开会设为始终开启；恢复自动请在这里选择。</p>
+    <p class="small">Apple“家庭”提供“手动夜视”和“自动夜视”两个互斥开关，分别设置常开和自动模式。关闭当前开启的开关会关闭夜视；两者表示模式，不代表红外灯此刻是否点亮。</p>
     <label><input id="enableAudio" type="checkbox" style="width:auto"> 收听摄像头现场声音</label>
     <label><input id="enableTalkback" type="checkbox" style="width:auto"> 允许 Apple“家庭”双向对讲</label>
-    <label><input id="enableNightVision" type="checkbox" style="width:auto"> 在 Apple“家庭”中显示夜视开关</label>
+    <label><input id="enableNightVision" type="checkbox" style="width:auto"> 在 Apple“家庭”中显示手动／自动夜视开关</label>
     <div class="row"><button id="saveFeatures" class="secondary">保存功能配置</button></div><p id="featureState" class="small" aria-live="polite" style="margin-top:12px">功能配置保存后需重启摄像头子桥。对讲时，在“家庭”直播页面使用对讲按钮。</p>
   </section>
   <section id="ptzSection"><div class="step">04 · 云台</div><h2>调整摄像头方向</h2>

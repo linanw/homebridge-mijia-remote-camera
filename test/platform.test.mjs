@@ -164,8 +164,13 @@ test('production platform publishes AAC-ELD with real microphone, two-way speake
     assert.ok(accessory.getService(hap.Service.Speaker));
     assert.equal(accessory.getService(hap.Service.Speaker).getCharacteristic(hap.Characteristic.Mute).value, false);
     assert.ok(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision'));
+    assert.ok(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision-auto'));
+    runtime.emit('night-mode', { mode: 'auto' });
+    assert.equal(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision').getCharacteristic(hap.Characteristic.On).value, false);
+    assert.equal(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision-auto').getCharacteristic(hap.Characteristic.On).value, true);
     runtime.emit('night-mode', { mode: 'off' });
     assert.equal(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision').getCharacteristic(hap.Characteristic.On).value, false);
+    assert.equal(accessory.getServiceById(hap.Service.Switch, 'mijia-night-vision-auto').getCharacteristic(hap.Characteristic.On).value, false);
     assert.equal(platform.nightVision.status().mode, 'off');
     assert.equal(platform.delegate.talkbackEnabled, true);
     assert.equal(platform.delegate.controller.recordingManagement, undefined);
