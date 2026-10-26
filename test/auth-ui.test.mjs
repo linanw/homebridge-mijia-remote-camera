@@ -18,6 +18,9 @@ class Element {
 
 async function ui({ restartRequired = false, runtime = { state: 'idle', ready: false, region: 'cn' }, clipboard,
   components = { ready: true }, statusError, configs = [{ platform: 'MijiaRemoteCamera', region: 'cn' }],
+  homeList = async () => [{ id: '202', ownerId: '11', name: '异地家庭', shared: false }],
+  deviceList = async () => [{ deviceId: '801', name: '摄像头', model: 'chuangmi.camera.061a01', online: true }],
+  resume = async () => ({ success: true }),
   nightGet = async () => ({ mode: 'auto' }), nightSet = async payload => ({ mode: payload.mode }) } = {}) {
   const html = await readFile(new URL('../homebridge-ui/public/index.html', import.meta.url), 'utf8');
   const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
@@ -46,8 +49,9 @@ async function ui({ restartRequired = false, runtime = { state: 'idle', ready: f
       if (method === '/status') { if (statusError) throw statusError; return runtime; }
       if (method === '/auth/status') return { state: 'idle' };
       if (method === '/auth/start') return { loginId: 'test-login', loginUrl: 'https://account.xiaomi.com/login?ticket=PRIVATE_UI', expiresIn: 30 };
-      if (method === '/homes') return [{ id: '202', ownerId: '11', name: '异地家庭', shared: false }];
-      if (method === '/devices') return [{ deviceId: '801', name: '摄像头', model: 'chuangmi.camera.061a01', online: true }];
+      if (method === '/homes') return homeList(payload);
+      if (method === '/devices') return deviceList(payload);
+      if (method === '/resume') return resume(payload);
       if (method === '/select') return { success: true, restartRequired };
       if (method === '/night/get') return nightGet(payload);
       if (method === '/night/set') return nightSet(payload);
@@ -91,6 +95,103 @@ test('real runtime protocol failures are translated without raw backend details'
   assert.match(screen.get('runtimeText').textContent, /协议尚不支持/);
 });
 
+test('successful lists do not mislabel a stopped camera lookup as a current login or discovery failure', async () => {
+  const screen = await ui({ runtime: { state: 'blocked', reason: 'home_request_failed', ready: false,
+    selected: true, authenticated: true, region: 'cn', lastFailure: 'home_request_failed' } });
+  await screen.get('load').onclick();
+  assert.equal(screen.get('homes').children.length, 1);
+  assert.equal(screen.get('devices').children.length, 1);
+  assert.equal(screen.get('save').disabled, false);
+  assert.equal(screen.get('error').textContent, '');
+  assert.match(screen.get('runtimeText').textContent, /连接摄像头时暂未读到设备信息.*重新连接/);
+  assert.doesNotMatch(screen.get('runtimeText').textContent, /无法读取家庭或设备列表|登录状态/);
+  assert.match(screen.get('connectionDetail').textContent, /上次连接（历史记录）.*当时未能读取摄像头设备信息/);
+  assert.doesNotMatch(screen.get('connectionDetail').textContent, /登录状态/);
+  assert.equal(screen.get('reconnect').disabled, false);
+});
+
+test('actual list failures retain a separate discovery error without changing camera connection status', async () => {
+  for (const failedList of ['homes', 'devices']) {
+    const screen = await ui({ runtime: { state: 'ready', ready: true, videoReceived: true },
+      ...(failedList === 'homes' ? { homeList: async () => { throw { reason: 'home_request_failed' }; } }
+        : { deviceList: async () => { throw { reason: 'home_request_failed' }; } }) });
+    await screen.get('load').onclick();
+    assert.match(screen.get('error').textContent, /无法读取家庭或设备列表，请检查网络与登录状态/);
+    assert.match(screen.get('runtimeText').textContent, /已收到摄像头视频/);
+    assert.equal(screen.methods.some(call => call.method === '/resume'), false);
+  }
+});
+
+test('a past lookup failure is historical while retries and healthy video retain their current state', async () => {
+  const runtime = { state: 'retrying', reason: 'home_request_failed', ready: false, selected: true,
+    authenticated: true, retryInSeconds: 8, lastFailure: 'home_request_failed' };
+  const screen = await ui({ runtime });
+  assert.match(screen.get('runtimeText').textContent, /8 秒后自动重试/);
+  assert.match(screen.get('connectionDetail').textContent, /历史记录.*当时未能读取摄像头设备信息/);
+  assert.equal(screen.get('reconnect').disabled, true);
+  Object.assign(runtime, { state: 'ready', reason: 'ready', ready: true, videoReceived: true });
+  await screen.intervals[0]();
+  assert.match(screen.get('runtimeText').textContent, /已收到摄像头视频/);
+  assert.doesNotMatch(screen.get('runtimeText').textContent, /家庭|登录|未能读取/);
+  assert.match(screen.get('connectionDetail').textContent, /历史记录/);
+  assert.equal(screen.get('reconnect').disabled, true);
+});
+
+test('explicit reconnect sends one resume request then follows current status without selecting or logging in', async () => {
+  let complete;
+  const runtime = { state: 'blocked', reason: 'home_request_failed', ready: false,
+    selected: true, authenticated: true, region: 'cn' };
+  const screen = await ui({ runtime, resume: () => new Promise(resolve => { complete = resolve; }) });
+  assert.equal(screen.get('reconnect').disabled, false);
+  const pending = screen.get('reconnect').onclick();
+  assert.equal(screen.get('reconnect').disabled, true);
+  await screen.get('reconnect').onclick();
+  assert.equal(screen.methods.filter(call => call.method === '/resume').length, 1);
+  Object.assign(runtime, { state: 'starting', reason: 'starting', stage: 'device_lookup' });
+  complete({ success: true }); await pending;
+  assert.match(screen.get('runtimeText').textContent, /正在核对摄像头/);
+  assert.match(screen.get('reconnectState').textContent, /已请求重新连接/);
+  assert.equal(screen.get('reconnect').disabled, true);
+  assert.equal(screen.methods.some(call => ['/select', '/auth/start'].includes(call.method)), false);
+  assert.equal(screen.savedConfigs.length, 0);
+});
+
+test('reconnect guards healthy video, active connection attempts, missing selection and authentication changes', async () => {
+  const base = { state: 'blocked', reason: 'home_request_failed', ready: false, selected: true, authenticated: true, region: 'cn' };
+  for (const state of [{ state: 'ready', ready: true, videoReceived: true }, { state: 'starting' },
+    { state: 'retrying' }, { selected: false }, { authenticated: false }, { paused: true }]) {
+    const screen = await ui({ runtime: { ...base, ...state } });
+    assert.equal(screen.get('reconnect').disabled, true);
+    await screen.get('reconnect').onclick();
+    assert.equal(screen.methods.some(call => call.method === '/resume'), false);
+  }
+  const region = await ui({ runtime: base });
+  region.get('region').value = 'sg'; region.get('region').onchange();
+  assert.equal(region.get('reconnect').disabled, true);
+  await region.get('reconnect').onclick();
+  assert.equal(region.methods.some(call => call.method === '/resume'), false);
+  const auth = await ui({ runtime: base });
+  await auth.get('login').onclick();
+  assert.equal(auth.get('reconnect').disabled, true);
+  await auth.get('reconnect').onclick();
+  assert.equal(auth.methods.some(call => call.method === '/resume'), false);
+  const unavailable = await ui({ runtime: base, statusError: { reason: 'plugin_not_running' } });
+  assert.equal(unavailable.get('reconnect').disabled, true);
+  await unavailable.get('reconnect').onclick();
+  assert.equal(unavailable.methods.some(call => call.method === '/resume'), false);
+});
+
+test('a rejected reconnect preserves retry access and shows only the safe error', async () => {
+  const screen = await ui({ runtime: { state: 'blocked', reason: 'home_request_failed', ready: false,
+    selected: true, authenticated: true }, resume: async () => { throw { reason: 'home_request_failed', raw: 'PRIVATE_TOKEN' }; } });
+  await screen.get('reconnect').onclick();
+  assert.equal(screen.get('reconnect').disabled, false);
+  assert.match(screen.get('reconnectState').textContent, /请求未完成/);
+  assert.match(screen.get('error').textContent, /连接摄像头时暂未读到设备信息/);
+  assert.doesNotMatch(screen.get('error').textContent, /无法读取家庭或设备列表|登录状态/);
+  assert.doesNotMatch(screen.get('error').textContent, /PRIVATE/);
+});
+
 test('changing region cannot display old-region homes under the new region selector', async () => {
   const screen = await ui();
   screen.get('region').value = 'sg';
@@ -128,12 +229,12 @@ test('retry countdown takes precedence over failure text and counts down between
   const runtime = { state: 'retrying', reason: 'connection_failed', attempt: 2, retryInSeconds: 17,
     lastFailure: 'connection_failed', ready: false, videoReceived: true };
   const screen = await ui({ runtime });
-  assert.match(screen.get('runtimeText').textContent, /17 秒后重试/);
+  assert.match(screen.get('runtimeText').textContent, /17 秒后自动重试/);
   assert.equal(screen.get('runtimeStatus').dataset.live, 'false');
   screen.advance(7); screen.intervals[1]();
-  assert.match(screen.get('runtimeText').textContent, /10 秒后重试/);
+  assert.match(screen.get('runtimeText').textContent, /10 秒后自动重试/);
   screen.advance(10); screen.intervals[1]();
-  assert.match(screen.get('runtimeText').textContent, /即将重试/);
+  assert.match(screen.get('runtimeText').textContent, /即将自动重试/);
   Object.assign(runtime, { state: 'starting', reason: 'starting', stage: 'authentication', attempt: 3, connectingElapsedSeconds: 1 });
   await screen.intervals[0]();
   assert.match(screen.get('runtimeText').textContent, /验证摄像头会话/);

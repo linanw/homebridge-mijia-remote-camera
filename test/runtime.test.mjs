@@ -112,7 +112,10 @@ test('typed discovery failures retain safe reason/code and no body', async t => 
 });
 
 test('auth and unsupported transport block automatic reconnection', async t => {
-  for (const [code, reason] of [[2, 'authentication_required'], [1, 'unsupported_transport'], [7, 'home_request_rejected']]) {
+  for (const [code, reason] of [[2, 'authentication_required'], [2, 'session_expired'], [1, 'unsupported_transport'],
+    [3, 'session_expired'], [3, 'home_request_rejected'], [0, 'invalid_home_selection'],
+    ...['home_request_rejected', 'invalid_home_selection', 'invalid_home_response', 'missing_home_owner',
+      'invalid_device_response', 'device_pagination_incomplete', 'camera_not_in_home'].map(reason => [7, reason])]) {
     const { manager, calls } = await fixture(t, child => { child.json({ success: false, reason, vendor: 3 }); child.exit(code); });
     await manager.select(selected);
     await assert.rejects(manager.start(), { reason });
@@ -120,6 +123,122 @@ test('auth and unsupported transport block automatic reconnection', async t => {
     assert.equal(manager.status().vendor, 3);
     await delay(70); assert.equal(calls.length, 1);
     await manager.close();
+  }
+});
+
+test('a failed stream device lookup retries even when separate home/device discovery succeeds', async t => {
+  let streamAttempts = 0, nextPort = 32188;
+  const { manager, calls, directory } = await fixture(t, (child, args) => {
+    if (action(args) === 'homes') {
+      child.json({ success: true, homes: [{ id: '202', ownerId: '22', name: '家庭', shared: true }] }); child.exit();
+    } else if (action(args) === 'devices') {
+      child.json({ success: true, devices: [{ ...selected, online: true }] }); child.exit();
+    } else if (++streamAttempts === 1) {
+      child.json({ success: false, reason: 'home_request_failed' }); child.exit(7);
+    } else ready(child, args);
+  }, { choosePort: async () => nextPort++, retryDelays: [120, 240, 480] });
+  await manager.select(selected);
+  const credentialsBefore = await fs.readFile(path.join(directory, '.micam/credentials.json'));
+  const selectionBefore = await fs.readFile(path.join(directory, 'selection.json'));
+  await assert.rejects(manager.start(), { reason: 'home_request_failed' });
+  assert.equal(manager.status().state, 'retrying');
+  const timer = manager.retryTimer, retryAt = manager.status().retryAt;
+  assert.equal((await manager.discoverHomes()).length, 1);
+  assert.equal((await manager.discoverDevices('202', '22'))[0].deviceId, selected.deviceId);
+  assert.equal(manager.status().authenticated, true);
+  assert.equal(manager.status().ready, false, 'successful lists are not proof of received video');
+  assert.equal(manager.retryTimer, timer, 'discovery does not replace the scheduled stream retry');
+  assert.equal(manager.status().retryAt, retryAt);
+  assert.equal(await manager.ensureReady({ timeoutMs: 300 }), 'http://127.0.0.1:32189/cam.ts');
+  assert.equal(streamAttempts, 2);
+  assert.equal(calls.filter(call => action(call.args) === 'stream').length, 2);
+  assert.equal(manager.status().videoReceived, true);
+  assert.equal(manager.status().lastFailure, 'home_request_failed');
+  assert.deepEqual(await fs.readFile(path.join(directory, '.micam/credentials.json')), credentialsBefore);
+  assert.deepEqual(await fs.readFile(path.join(directory, 'selection.json')), selectionBefore);
+});
+
+test('stopping after a failed cloud lookup cancels its scheduled stream retry', async t => {
+  const { manager, calls } = await fixture(t, child => {
+    child.json({ success: false, reason: 'home_request_failed' }); child.exit(7);
+  });
+  await manager.select(selected);
+  await assert.rejects(manager.start(), { reason: 'home_request_failed' });
+  await manager.stop(); await delay(80);
+  assert.equal(calls.length, 1);
+  assert.equal(manager.retryTimer, null);
+  assert.equal(manager.status().state, 'stopped');
+});
+
+test('explicit reconnect starts a stopped selected camera once and preserves a healthy stream', async t => {
+  const { manager, calls, terminated } = await fixture(t, ready);
+  await manager.select(selected);
+  await Promise.all(Array.from({ length: 4 }, () => manager.resume()));
+  await eventually(() => manager.ready);
+  assert.equal(calls.length, 1, 'reconnect starts without HomeKit requesting a snapshot');
+  await manager.resume();
+  assert.equal(calls.length, 1);
+  assert.equal(terminated.length, 0);
+  assert.equal(manager.status().ready, true);
+});
+
+test('explicit reconnect without a selected camera does not start a backend process', async t => {
+  const { manager, calls } = await fixture(t, ready);
+  await manager.resume();
+  assert.equal(calls.length, 0);
+  assert.equal(manager.status().selected, false);
+});
+
+test('explicit reconnect neither duplicates an in-flight attempt nor shortens cloud-error backoff', async t => {
+  const { manager, calls } = await fixture(t, null, { retryDelays: [120, 240, 480] });
+  await manager.select(selected);
+  const start = manager.start();
+  const rejected = assert.rejects(start, { reason: 'home_request_failed' });
+  await eventually(() => calls.length === 1);
+  await manager.resume();
+  assert.equal(calls.length, 1);
+  calls[0].child.json({ success: false, reason: 'home_request_failed' }); calls[0].child.exit(7);
+  await rejected;
+  const timer = manager.retryTimer, retryAt = manager.status().retryAt;
+  await manager.resume();
+  assert.equal(manager.retryTimer, timer);
+  assert.equal(manager.status().retryAt, retryAt);
+  assert.equal(manager.status().state, 'retrying');
+  assert.equal(calls.length, 1);
+});
+
+test('explicit reconnect releases an old blocked state without clearing account or camera selection', async t => {
+  const { manager, calls, directory } = await fixture(t, (child, args, count) => {
+    if (count === 1) { child.json({ success: false, reason: 'home_request_rejected' }); child.exit(7); }
+    else ready(child, args);
+  });
+  await manager.select(selected);
+  const before = await fs.readFile(path.join(directory, '.micam/credentials.json'));
+  await assert.rejects(manager.start(), { reason: 'home_request_rejected' });
+  assert.equal(manager.status().state, 'blocked');
+  await manager.resume();
+  await eventually(() => manager.ready);
+  assert.equal(calls.length, 2);
+  assert.equal(manager.selected().deviceId, selected.deviceId);
+  assert.deepEqual(await fs.readFile(path.join(directory, '.micam/credentials.json')), before);
+});
+
+test('a reconnect waiting for storage cannot undo a later pause, stop or close', async t => {
+  for (const operation of ['pause', 'stop', 'close']) {
+    const { manager, calls } = await fixture(t, ready);
+    await manager.select(selected);
+    const originalOpen = manager.open.bind(manager);
+    let release;
+    manager.open = () => new Promise(resolve => { release = () => resolve(manager); });
+    try {
+      const reconnect = manager.resume();
+      await manager[operation]();
+      release(); await reconnect;
+      assert.equal(calls.length, 0);
+      assert.equal(manager.status().state, operation === 'pause' ? 'paused' : 'stopped');
+      assert.equal(manager.status().paused, operation === 'pause');
+      assert.equal(manager.closed, operation === 'close');
+    } finally { manager.open = originalOpen; }
   }
 });
 

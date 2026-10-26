@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4 — 2026-10-26
+
+- Retry temporary Xiaomi device-lookup request failures during stream startup with the existing backoff, instead of permanently blocking the selected camera. Keep authentication, permission, selection and response-format failures blocked.
+- Distinguish stream-connection failures and historical failures from errors in the current home/device picker.
+- Add an explicit reconnect button for stopped connections without changing credentials, device selection or pairing. Preserve healthy connections, in-flight attempts and scheduled retry delays, and prevent a delayed reconnect from undoing a later pause or shutdown.
+
 ## 0.4.3 — 2026-10-24
 
 - Name the existing HomeKit night-vision control 手动夜视 and add 自动夜视, with distinct `Name` and `ConfiguredName` values and the original service identity preserved.

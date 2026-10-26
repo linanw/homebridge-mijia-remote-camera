@@ -14,6 +14,7 @@
   <h1>米家远程摄像头</h1>
   <p class="intro">登录你的小米账号，选择家庭和摄像头。视频由此插件连接米家远程中继，再接入 Apple 家庭。</p>
   <div id="runtimeStatus" class="status"><span class="dot"></span><div><span id="runtimeText">正在检查插件状态…</span><div id="connectionDetail" class="small"></div><div id="mediaDetail" class="small"></div><div id="audioDetail" class="small"></div></div></div>
+  <div class="row" style="margin:-10px 0 16px"><button id="reconnect" class="secondary" disabled>重新连接摄像头</button><span id="reconnectState" class="small" role="status" aria-live="polite"></span></div>
   <details style="margin:-8px 0 20px"><summary style="cursor:pointer;color:var(--muted)">连接诊断</summary><p class="small" style="margin-top:10px">以下报告只包含连接阶段和状态，可复制用于排查。</p><pre id="diagnosticsReport" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;padding:12px;background:var(--panel);border-radius:8px">尚未读取到连接状态。</pre><button id="copyDiagnostics" class="secondary" disabled>复制脱敏诊断</button><p id="diagnosticsHint" class="small" aria-live="polite" style="margin-top:8px"></p></details>
   <section id="components" class="hide"><div class="step">首次设置 · 本地组件</div><h2>导入已有的运行包</h2>
     <p class="small">请先将你已持有的运行包放入 Homebridge 数据目录，再填写目录内的文件名。导入只读取本地组件并核验完整性，不读取旧包中的账号信息。</p>
@@ -83,7 +84,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const regions = ['cn','sg','de','us','ru','i2'];
-  let homes=[], devices=[], loginId, pollTimer, statusTimer, clockTimer, configs=[], connected=false, authBusy=false, regionTouched=false, regionNeedsLogin=false, runtimeRegion='cn', diagnosticValue={}, statusReceivedAt=0, nightBusy=false, nightGeneration=0;
+  let homes=[], devices=[], loginId, pollTimer, statusTimer, clockTimer, configs=[], connected=false, authBusy=false, regionTouched=false, regionNeedsLogin=false, runtimeRegion='cn', diagnosticValue={}, statusReceivedAt=0, nightBusy=false, nightGeneration=0, reconnectBusy=false;
   const messages = { plugin_not_running:'插件尚未启动。请先保存配置并重新启动 Homebridge。', auth_required:'需要完成小米登录。',
     unauthenticated:'需要完成小米登录。', network_error:'连接小米服务失败，请稍后重试。', request_timeout:'请求超时，请稍后重试。',
     login_expired:'登录链接已过期，请重新生成。', login_not_approved:'小米授权未完成，请重新尝试。', login_cancelled:'本次登录已取消。',
@@ -237,6 +238,9 @@
     return result;
   }
   const stageLabels={device_lookup:'正在核对摄像头',provisioning:'正在获取远程连接信息',relay_connect:'正在连接远程中继',authentication:'正在验证摄像头会话',waiting_video:'正在等待摄像头首个关键帧'};
+  const connectionMessages={home_request_failed:'连接摄像头时暂未读到设备信息，请重新连接。'};
+  function reconnectAllowed(){return connected&&!authBusy&&!regionNeedsLogin&&!reconnectBusy&&diagnosticValue.selected===true&&diagnosticValue.authenticated===true&&diagnosticValue.paused!==true&&diagnosticValue.ready!==true&&!['starting','retrying'].includes(diagnosticValue.state);}
+  function renderReconnect(){$('reconnect').disabled=!reconnectAllowed();}
   function renderRuntime(){
     const value=diagnosticValue, since=Math.max(0,Math.floor((Date.now()-statusReceivedAt)/1000));
     const live=value.ready===true&&value.videoReceived===true;
@@ -248,7 +252,7 @@
       if(Number.isSafeInteger(value.connectingElapsedSeconds))detail.push(`已等待 ${value.connectingElapsedSeconds+since} 秒`);
     }else if(value.state==='retrying'){
       const remaining=Number.isSafeInteger(value.retryInSeconds)?Math.max(0,value.retryInSeconds-since):0;
-      $('runtimeText').textContent=remaining>0?`连接中断，将在 ${remaining} 秒后重试。`:'连接中断，即将重试。';
+      $('runtimeText').textContent=remaining>0?`连接中断，将在 ${remaining} 秒后自动重试。`:'连接中断，即将自动重试。';
       if(value.attempt>0)detail.push(`第 ${value.attempt} 次尝试未完成`);
     }else if(live){
       $('runtimeText').textContent='已收到摄像头视频。';
@@ -257,10 +261,10 @@
       $('runtimeText').textContent='等待摄像头首帧。';
     }else{
       const states={idle:'请登录并选择摄像头。',stopped:'连接已停止。',paused:'连接已暂停，请选择摄像头启动。',blocked:'连接需要处理。'};
-      $('runtimeText').textContent=messages[value.reason]||states[value.state]||'插件已运行，可以登录并选择摄像头。';
+      $('runtimeText').textContent=connectionMessages[value.reason]||messages[value.reason]||states[value.state]||'插件已运行，可以登录并选择摄像头。';
       if(value.attempt>0)detail.push(`已尝试 ${value.attempt} 次`);
     }
-    if(value.lastFailure)detail.push(`上次连接：${messages[value.lastFailure]||'未能完成，请查看连接诊断。'}`);
+    if(value.lastFailure)detail.push(`上次连接（历史记录）：${value.lastFailure==='home_request_failed'?'当时未能读取摄像头设备信息。':messages[value.lastFailure]||'未能完成，请查看连接诊断。'}`);
     $('connectionDetail').textContent=detail.join(' · ');
     const media=[];
     if(Number.isSafeInteger(value.media?.snapshot?.requests))media.push(`快照 ${value.media.snapshot.requests} 次`);
@@ -270,17 +274,19 @@
     $('audioDetail').textContent=audio?.enabled===false?'声音已关闭。':audio?.received===true
       ?'已收到真实摄像头声音'+(audio.talkbackSupported?' · 支持双向对讲。':'。')
       :'等待摄像头声音；视频可独立播放。';
+    renderReconnect();
   }
   function reason(error){return error?.error?.reason || error?.requestError?.reason || error?.reason || error?.message;}
-  function showError(error){const key=reason(error); $('error').textContent=messages[key] || '操作未完成，请检查插件状态后重试。'; if(key==='plugin_not_running')$('bootstrap').classList.remove('hide');}
+  function showError(error,contextMessages={}){const key=reason(error); $('error').textContent=contextMessages[key]||messages[key]||'操作未完成，请检查插件状态后重试。'; if(key==='plugin_not_running')$('bootstrap').classList.remove('hide');}
   function clearError(){$('error').textContent='';}
   async function request(path,payload={}){return homebridge.request(path,payload);}
   function options(select,items,render,empty){select.replaceChildren(); if(!items.length){const option=document.createElement('option');option.textContent=empty;select.append(option);select.disabled=true;return;} items.forEach((item,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=render(item);select.append(option)});select.disabled=false;}
   function chosenHome(){return homes[Number($('homes').value)];}
   function chosenDevice(){return devices[Number($('devices').value)];}
-  function setLoginBusy(busy){authBusy=busy;if(busy||regionNeedsLogin)resetMetadata();$('login').disabled=busy||!connected; $('load').disabled=busy||!connected||regionNeedsLogin; $('region').disabled=busy; $('cancel').classList.toggle('hide',!busy);renderMatter();renderPtz();}
+  function setLoginBusy(busy){authBusy=busy;if(busy||regionNeedsLogin)resetMetadata();$('login').disabled=busy||!connected; $('load').disabled=busy||!connected||regionNeedsLogin; $('region').disabled=busy; $('cancel').classList.toggle('hide',!busy);renderMatter();renderPtz();renderReconnect();}
   function hideLoginLink(){$('loginLink').classList.add('hide');$('officialLogin').removeAttribute('href');}
-  async function status(){try{const value=await request('/status');connected=true;$('components').classList.add('hide');$('bootstrap').classList.add('hide');if(regions.includes(value.region)){runtimeRegion=value.region;if(!regionTouched&&!authBusy)$('region').value=runtimeRegion;}regionNeedsLogin=$('region').value!==runtimeRegion;matterValue=safeMatterStatus(value.matter);setLoginBusy(authBusy);diagnosticValue=safeDiagnostics(value);statusReceivedAt=Date.now();$('diagnosticsReport').textContent=JSON.stringify(diagnosticValue,null,2);$('copyDiagnostics').disabled=false;renderRuntime();renderMatter();await readPtzCapabilities();await readMetadataStatus();}catch(error){connected=false;resetMetadata();resetPtz();matterValue={};clearMatterPairing();renderMatter();$('login').disabled=true;$('load').disabled=true;$('runtimeStatus').dataset.live='false';$('runtimeText').textContent='等待插件启动';$('connectionDetail').textContent='';$('mediaDetail').textContent='';showError(error);}}
+  async function status(){try{const value=await request('/status');connected=true;$('components').classList.add('hide');$('bootstrap').classList.add('hide');if(regions.includes(value.region)){runtimeRegion=value.region;if(!regionTouched&&!authBusy)$('region').value=runtimeRegion;}regionNeedsLogin=$('region').value!==runtimeRegion;matterValue=safeMatterStatus(value.matter);setLoginBusy(authBusy);diagnosticValue=safeDiagnostics(value);statusReceivedAt=Date.now();$('diagnosticsReport').textContent=JSON.stringify(diagnosticValue,null,2);$('copyDiagnostics').disabled=false;renderRuntime();renderMatter();await readPtzCapabilities();await readMetadataStatus();}catch(error){connected=false;resetMetadata();resetPtz();matterValue={};clearMatterPairing();renderMatter();renderReconnect();$('login').disabled=true;$('load').disabled=true;$('runtimeStatus').dataset.live='false';$('runtimeText').textContent='等待插件启动';$('connectionDetail').textContent='';$('mediaDetail').textContent='';showError(error);}}
+  $('reconnect').onclick=async()=>{if(!reconnectAllowed())return;reconnectBusy=true;renderReconnect();clearError();$('reconnectState').textContent='正在请求重新连接…';try{await request('/resume');await status();$('reconnectState').textContent='已请求重新连接，进度见上方。';}catch(error){$('reconnectState').textContent='重新连接请求未完成。';showError(error,connectionMessages);}finally{reconnectBusy=false;renderReconnect();}};
   $('copyDiagnostics').onclick=async()=>{try{if(typeof navigator==='undefined'||typeof navigator.clipboard?.writeText!=='function')throw Error('clipboard_unavailable');await navigator.clipboard.writeText($('diagnosticsReport').textContent);$('diagnosticsHint').textContent='已复制脱敏诊断。';}catch{$('diagnosticsHint').textContent='浏览器无法自动复制，请手动选中上方诊断报告并复制。';}};
   async function loadHomes(){resetPtz(true);clearMatterPairing();clearError();$('selectionState').textContent='正在读取家庭…';try{const response=await request('/homes');homes=Array.isArray(response)?response:(response.homes||[]);options($('homes'),homes,home=>(home.name||'未命名家庭')+(home.shared?' · 共享家庭':''),'当前地区没有可访问的家庭');$('selectionState').textContent=homes.length?'请选择目标家庭。':'请检查地区及账号的家庭访问权限。';devices=[];options($('devices'),[],()=>'', '先选择家庭');$('save').disabled=true;$('cameraName').disabled=true;if(homes.length)await loadDevices();}catch(error){$('selectionState').textContent='';showError(error);}}
   async function loadDevices(){const home=chosenHome();if(!home)return;resetPtz(true);clearMatterPairing();clearError();$('selectionState').textContent='正在读取此家庭的摄像头…';$('save').disabled=true;try{const response=await request('/devices',{homeId:String(home.id),homeOwner:String(home.ownerId)});devices=Array.isArray(response)?response:(response.devices||[]);options($('devices'),devices,device=>(device.name||device.model||'摄像头')+(device.online===false?' · 离线':''),'此家庭没有摄像头');$('selectionState').textContent='';deviceChanged();}catch(error){devices=[];options($('devices'),[],()=>'', '读取设备失败');$('selectionState').textContent='';showError(error);}}
